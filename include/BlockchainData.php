@@ -47,13 +47,6 @@ class BlockchainData
         $this->empty = $this->uid === 0;
     }
 
-    public function cacheHalving()
-    {
-        $this->actives = [];
-        foreach( $this->kvs as $kv )
-            $kv->cacheHalving();
-    }
-
     private $q_uids;
 
     public function rollback( $txfrom )

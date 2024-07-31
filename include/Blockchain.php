@@ -20,7 +20,7 @@ class Blockchain
     private $lastUp;
     private $height;
     private $txheight;
-    private $lastBlock;
+    private $lastTarget;
     private $q_getTxIdsFromTo;
 
     public function __construct( $db )
@@ -41,7 +41,7 @@ class Blockchain
 
     private function ts2r( $key, $tx )
     {
-        $txid = d58( $tx['id'] );
+        $txid = h2b( $tx['hash'] );
         $bucket = unpack( 'J1', $txid )[1];
         return [ $key, $bucket, substr( $txid, 8 ) ];
     }
@@ -66,7 +66,7 @@ class Blockchain
         {
             $height = $this->hs->getHigh( 0 );
             if( $height === false )
-                $height = 0;
+                $height = -1;
         }
 
         $this->height = $height;
@@ -94,7 +94,7 @@ class Blockchain
         if( !isset( $q[1]) )
             return false;
 
-        return e58( $q[1] );
+        return b2h( $q[1] );
     }
 
     public function getTxIdsAtHeight( $height )
@@ -158,62 +158,99 @@ class Blockchain
 
     private function blockUnique( $header )
     {
-        return $header['id'] ?? $header['signature'];
+        return $header['hash'];
+    }
+
+    public function getBlockAt( int $height ) : array|false
+    {
+        $local = localBlocks()->getValueByKey( $height );
+        if( $local !== false )
+        {
+            localBlocks()->reset();
+            return $local;
+        }
+
+        $json = sprintf( '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x%x", true],"id":1}', $height );
+        $data = wk()->fetch( '/', true, $json );
+        if( $data === false || false === ( $data = jd( $data ) ) || !isset( $data['result'] ) )
+        {
+            wk()->log( 'e', 'eth_getBlockByNumber( ' . $height . ' )' );
+            return false;
+        }
+        return $data['result'];
+    }
+
+    public function getTracesAt( int $height ) : array|false
+    {
+        $local = localTraces()->getValueByKey( $height );
+        if( $local !== false )
+        {
+            localTraces()->reset();
+            return $local;
+        }
+
+        $json = sprintf( '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x%x", true],"id":1}', $height );
+        $data = wk()->fetch( '/', true, $json );
+        if( $data === false || false === ( $data = jd( $data ) ) || !isset( $data['result'] ) )
+        {
+            wk()->log( 'e', 'eth_getBlockByNumber( ' . $height . ' )' );
+            return false;
+        }
+        return $data['result'];
+    }
+
+    public function getHeight() : int
+    {
+        return 950000;
     }
 
     public function update( $block = null )
     {
         $entrance = microtime( true );
 
-        if( isset( $block ) )
+        //$this->rollback( 590000 );
+
+        $from = $this->height;
+        $height = $this->lastTarget ?? -1;
+        if( $height - $from - W8IO_MAX_UPDATE_BATCH < 0 )
         {
-            $header = $block;
-        }
-        else if( false === ( $header = wk()->getBlockAt( 0, true ) ) )
-        {
-            wk()->log( 'w', 'OFFLINE: cannot get last header' );
-            return W8IO_STATUS_OFFLINE;
+            if( false === ( $height = $this->getHeight() ) )
+            {
+                wk()->log( 'w', 'OFFLINE: cannot get last header' );
+                return W8IO_STATUS_OFFLINE;
+            }
+            else
+            {
+                $this->lastTarget = $height;
+            }
         }
 
-        $height = $header['height'];
-
-        if( 0 === ( $from = $this->height ) )
+        if( -1 === $from )
         {
-            $this->height = $i = $from = 1;
-            $reference = '67rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ';
+            $blockHeight = -1;
+            $i = $from = 0;
+            $reference = '0x0000000000000000000000000000000000000000000000000000000000000000';
             wk()->log( 'w', 'starting from GENESIS' );
         }
         else
-        for( $i = $from;; )
+        for( $i = $from + 1;; )
         {
-            if( 0 ) // per block update
+            $block = $this->getBlockAt( $i );
+            if( $block === false )
             {
-                if( $i === $height )
-                    return W8IO_STATUS_NORMAL;
+                wk()->log( 'w', 'OFFLINE: cannot get block' );
+                return W8IO_STATUS_OFFLINE;
             }
+            $blockHeight = $i;
 
-            if( ( $header['height'] ?? 0 ) !== $i )
-            {
-                $header = wk()->getBlockAt( $i, true );
-                if( $header === false )
-                {
-                    wk()->log( 'w', 'OFFLINE: cannot get header' );
-                    return W8IO_STATUS_OFFLINE;
-                }
-            }
-
-            $blockUnique = $this->getMyUniqueAt( $i );
+            $reference = $this->getMyUniqueAt( $i - 1 );            
 
             // STABLE BLOCK
-            if( $blockUnique === $this->blockUnique( $header ) )
+            if( $reference === $block['parentHash'] )
             {
-                wk()->log( 'd', 'stable @ ' . $i );
-                if( $i == $height )
-                    return W8IO_STATUS_NORMAL;
+                wk()->log( 'd', 'stable @ ' . ( $i - 1 ) );
 
-                $reference = $blockUnique;
-                $from = ++$i;
-
+                $from = $i;
                 if( $this->height >= $from )
                 {
                     $rollback = true;
@@ -221,18 +258,6 @@ class Blockchain
                 }
 
                 break;
-            }
-
-            // BLOCK UPDATE
-            if( $i === $from )
-            {
-                $reference = $this->getMyUniqueAt( $i - 1 );
-                if( $reference === $header['reference'] )
-                {
-                    wk()->log( 'd', 'update @ ' . $i );
-                    $update = true;
-                    break;
-                }
             }
 
             wk()->log( 'w', 'fork @ ' . $i );
@@ -245,77 +270,63 @@ class Blockchain
 
         $to = min( $height, $from + W8IO_MAX_UPDATE_BATCH - 1 );
         //$to = min( $height, $from + 1 - 1 );
-        for( ; $i <= $to; $i++ )
+        for( /* $i = $from */; $i <= $to; $i++ )
         {
-            if( ( $block['height'] ?? 0 ) !== $i )
+            if( $blockHeight !== $i )
             {
-                $block = wk()->getBlockAt( $i );
+                $block = $this->getBlockAt( $i );
                 if( $block === false )
                 {
                     wk()->log( 'w', 'OFFLINE: cannot get block' );
                     return W8IO_STATUS_OFFLINE;
                 }
+                $blockHeight = $i;
             }
 
-            if( $reference !== $block['reference'] )
+            if( $reference !== $block['parentHash'] )
             {
                 wk()->log( 'w', 'on-the-fly change @ ' . $i );
                 return W8IO_STATUS_WARNING;
             }
 
-            if( isset( $header ) )
-            {
-                if( $header['height'] === $i && $header['signature'] !== $block['signature'] )
-                {
-                    wk()->log( 'd', 'repeat update @ ' . $i );
-                    return $this->update( $block );
-                }
-                unset( $header );
-            }
-
-            $n = $block['transactionCount'];
+            $blockHash = $block['hash'];
+            $txs = $block['transactions'];
+            $n = count( $txs );
             if( $n )
             {
-                $txs = $block['transactions'];
+                $baseFee = $block['baseFeePerGas'];
+                $traces = $this->getTracesAt( $i );
                 $key = w8h2k( $i );
                 for( $j = 0; $j < $n; ++$j, ++$key )
                 {
                     $tx = $txs[$j];
-                    $txid = $tx['id'];
-
-                    if( isset( $update ) )
+                    $hash = $tx['hash'];
+                    $txTrace = $traces[$j];
+                    $txReceipt = localReceipts()->getValueByKey( $hash );
+                    localReceipts()->reset();
+                    if( $hash !== $txTrace['transactionHash'] ||
+                        $hash !== $txReceipt['transactionHash'] ||
+                        $blockHash !== $txReceipt['blockHash'] ||
+                        $i !== intval( $txReceipt['blockNumber'], 16 ) ||
+                        $j !== intval( $txReceipt['transactionIndex'], 16 ) )
                     {
-                        if( !isset( $txids ) )
-                            $txids = $this->getTxIdsAtHeight( $i );
-                        if( isset( $txids[$key] ) && $txids[$key] === $txid )
-                            continue;
-                        $fixate = $key;
-                        unset( $update );
+                        wk()->log( 'w', 'on-the-fly transaction change @ ' . $i );
+                        return W8IO_STATUS_WARNING;
                     }
 
-                    if( in_array( $tx['type'], [ TX_INVOKE, TX_EXPRESSION, TX_ETHEREUM ] ) )
-                    {
-                        $tx = wk()->getTransactionById( $txid );
-                        if( $tx === false || $tx['height'] !== $i )
-                        {
-                            wk()->log( 'i', 'OFFLINE: cannot get state changes' );
-                            return W8IO_STATUS_OFFLINE;
-                        }
-                    }
-
+                    $tx['trace'] = $txTrace;
+                    $tx['receipt'] = $txReceipt;
+                    $tx['baseFee'] = $baseFee;
                     $newTxs[$key] = $tx;
                     $txheight = $key;
                 }
             }
 
             if( !isset( $fixate ) )
-            {
                 $fixate = w8h2k( $i, $n );
-                unset( $update );
-            }
 
             unset( $block['transactions'] );
-            $reference = $this->blockUnique( $block );
+            $reference = $blockHash;
             $newHdrs[$i] = $block;
 
             if( 0 && $i > $from )
@@ -340,9 +351,14 @@ class Blockchain
                 $txCount -= w8k2i( $fixate );
             }
 
+            $parserTxs = $newTxs;
+
             $hs = [];
             foreach( $newHdrs as $height => $block )
-                $hs[] = [ $height, d58( $this->blockUnique( $block ) ), intdiv( $block['timestamp'], 1000 ) ];
+            {
+                $hs[] = [ $height, h2b( $this->blockUnique( $block ) ), intval( $block['timestamp'], 16 ) ];
+                $parserTxs[w8h2kg( $height )] = [ 'type' => TX_MINER, 'block' => $block ];
+            }
             $this->hs->merge( $hs );
 
             if( count( $newTxs ) )
@@ -353,39 +369,14 @@ class Blockchain
                 $this->ts->merge( $ts );
             }
 
-            $parserTxs = $newTxs;
-            for( $height = $this->height; $height < $to; ++$height )
-            {
-                if( isset( $newHdrs[$height] ) )
-                    $block = $newHdrs[$height];
-                else if( isset( $this->lastBlock ) )
-                    $block = $this->lastBlock;
-                if( !isset( $block['height'] ) || $block['height'] !== $height )
-                {
-                    $block = wk()->getBlockAt( $this->height, true );
-                    if( !isset( $block['height'] ) || $block['height'] !== $height )
-                        w8_err( 'unexpected block @ ' . $height );
-                }
-
-                $generator = $block['generator'];
-                $reward = $block['reward'] ?? 0;
-                $rewardShares = $block['rewardShares'] ?? [ $generator => $reward ];
-                $parserTxs[w8h2kg( $height )] = [ 'type' => TX_GENERATOR, 'generator' => $generator, 'reward' => $reward, 'rewardShares' => $rewardShares ];
-            }
-
-            if( count( $parserTxs ) )
-            {
-                ksort( $parserTxs );
-                $this->parser->update( $parserTxs );
-            }
+            ksort( $parserTxs );
+            $this->parser->update( $parserTxs );
 
             $this->setHeight( $height );
             if( count( $newTxs ) )
                 $this->setTxHeight( $txheight );
             else
                 $this->setTxHeight( $this->txheight );
-
-            $this->lastBlock = $newHdrs[$height];
         }
         $this->db->commit();
 

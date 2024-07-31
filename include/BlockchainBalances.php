@@ -9,10 +9,10 @@ class BlockchainBalances
 {
     public Triples $balances;
     public KV $uids;
+    public KV $amounts;
 
     private Triples $db;
     private $uid;
-    private $parser;
     private $empty;
 
     public function __construct( $db )
@@ -21,7 +21,7 @@ class BlockchainBalances
         $this->balances = new Triples( $this->db, 'balances', 1,
             // uid                 | address  | asset    | balance
             // r0                  | r1       | r2       | r3
-            [ 'INTEGER PRIMARY KEY', 'INTEGER', 'INTEGER', 'INTEGER' ],
+            [ 'INTEGER PRIMARY KEY', 'INTEGER', 'INTEGER', 'TEXT' ],
 //          [ 0,                     1,         1,         0 ] );
             [ 0,                     0,         0,         0 ] );
 
@@ -36,19 +36,16 @@ class BlockchainBalances
 */
 
         $this->uids = new KV;
+        $this->amounts = new KV;
         $this->setUid();
         $this->empty = $this->uid === 0;
-    }
-
-    public function cacheHalving()
-    {
-        $this->uids->cacheHalving();
     }
 
     public function rollback( $pts )
     {
         if( is_array( $pts ) && count( $pts ) > 0 )
-            $this->update( $pts, true );
+            $this->update( $pts, true, [] );
+        $this->amounts->reset();
     }
 
     private function setUid()
@@ -74,7 +71,7 @@ class BlockchainBalances
             if( $amount === 0 )
                 continue;
 
-            $procs[$aid][$asset] = $amount + ( $procs[$aid][$asset] ?? 0 );
+            $procs[$aid][$asset] = gmp_add( $amount, $procs[$aid][$asset] ?? 0 );
         }
     }
 
@@ -91,7 +88,7 @@ class BlockchainBalances
         {
             if( !isset( $this->q_getUid ) )
             {
-                $this->q_getUid = $this->balances->db->prepare( 'SELECT r0 FROM balances WHERE r1 = ? AND r2 = ?' );
+                $this->q_getUid = $this->balances->db->prepare( 'SELECT r0, r3 FROM balances WHERE r1 = ? AND r2 = ?' );
                 if( $this->q_getUid === false )
                     w8_err( 'getUid' );
             }
@@ -99,12 +96,13 @@ class BlockchainBalances
             if( false === $this->q_getUid->execute( [ $address, $asset ] ) )
                 w8_err( 'getUid' );
 
-            $uid = $this->q_getUid->fetchAll();
+            $r = $this->q_getUid->fetchAll();
         }
 
-        if( isset( $uid[0] ) )
+        if( isset( $r[0] ) )
         {
-            $uid = $uid[0][0];
+            $uid = $r[0][0];
+            $this->amounts->setKeyValue( $uid, $r[0][1] );
             $update = true;
         }
         else
@@ -130,21 +128,43 @@ class BlockchainBalances
 
         if( false === $this->q_insertBalance->execute( [ $uid, $address, $asset, $amount ] ) )
             w8_err( 'insertBalance' );
+
+        $this->amounts->setKeyValue( $uid, $amount );
     }
 
+    private $q_getBalance;
     private $q_updateBalance;
 
     private function updateBalance( $uid, $amount )
     {
+        $before = $this->amounts->getValueByKey( $uid );
+        if( $before === false )
+        {
+            if( !isset( $this->q_getBalance ) )
+            {
+                $this->q_getBalance = $this->balances->db->prepare( 'SELECT r3 FROM balances WHERE r0 = ?' );
+                if( $this->q_getBalance === false )
+                    w8_err( 'getBalance' );
+            }
+
+            if( false === $this->q_getBalance->execute( [ $uid ] ) )
+                w8_err( 'getBalance' );
+
+            $before = $this->q_getBalance->fetchAll()[0][0];
+        }
+
         if( !isset( $this->q_updateBalance ) )
         {
-            $this->q_updateBalance = $this->balances->db->prepare( 'UPDATE balances SET r3 = r3 + ? WHERE r0 = ?' );
+            $this->q_updateBalance = $this->balances->db->prepare( 'UPDATE balances SET r3 = ? WHERE r0 = ?' );
             if( $this->q_updateBalance === false )
                 w8_err( 'updateBalance' );
         }
 
+        $amount = gmp_add( $before, $amount );
         if( false === $this->q_updateBalance->execute( [ $amount, $uid ] ) )
             w8_err( 'updateBalance' );
+
+        $this->amounts->setKeyValue( $uid, $amount );
     }
 
     private function commitChanges( $procs, $isRollback = false )
@@ -153,7 +173,7 @@ class BlockchainBalances
         foreach( $aprocs as $asset => $amount )
         {
             if( $isRollback )
-                $amount = -$amount;
+                $amount = gmp_neg( $amount );
 
             [ $uid, $update ] = $this->getUid( $address, $asset );
 
@@ -174,97 +194,19 @@ class BlockchainBalances
 
         switch( $type )
         {
-            case TX_SPONSOR:
-                $procs_a = [ asset_out( $type ) => 1, $asset => -$amount ];
-                $procs_b = [ asset_in( $type ) => 1, $asset => +$amount, $afee => -$fee ];
-                break;
-
-            case TX_GENERATOR:
-                if( $asset === $afee )
-                    $procs_a = [ asset_out( $type ) => 1, $asset => -$amount -$fee ];
-                else
-                    $procs_a = [ asset_out( $type ) => 1, $asset => -$amount, $afee => -$fee ];
-                $procs_b = [ asset_in( $type ) => 1, $asset => +$amount ];
-                break;
-
-            case TX_GENESIS:
-            case TX_PAYMENT:
-            case TX_TRANSFER:
-            case ITX_TRANSFER:
-            case TX_EXCHANGE:
-            case TX_MATCHER:
-            case TX_INVOKE:
-            case ITX_INVOKE:
-            case TX_ETHEREUM:
+            case TX_MINER:
             case TX_REWARD:
-                if( $asset === $afee )
-                    $procs_a = [ asset_out( $type ) => 1, $asset => -$amount -$fee ];
-                else
-                    $procs_a = [ asset_out( $type ) => 1, $asset => -$amount, $afee => -$fee ];
-                $procs_b = [ asset_in( $type ) => 1, $asset => +$amount ];
-                break;
-
-            case TX_ISSUE:
-            case ITX_ISSUE:
-            case TX_REISSUE:
-            case ITX_REISSUE:
-                $procs_a = [ asset_out( $type ) => 1, $asset => +$amount, $afee => -$fee ];
-                break;
-
-            case TX_BURN:
-            case ITX_BURN:
-                $procs_a = [ asset_out( $type ) => 1, $asset => -$amount, $afee => -$fee ];
-                break;
-
-            case TX_LEASE:
-            case ITX_LEASE:
-                if( w8k2h( $ts[TXKEY] ) > GetHeight_LeaseReset() )
-                {
-                    $procs_a = [ asset_out( $type ) => 1, WAVES_LEASE_ASSET => -$amount, $afee => -$fee ];
-                    $procs_b = [ asset_in( $type ) => 1, WAVES_LEASE_ASSET => +$amount ];
-                }
-                else
-                {
-                    $procs_a = [ asset_out( $type ) => 1, $afee => -$fee ];
-                }
-                break;
-
-            case TX_LEASE_CANCEL:
-            case ITX_LEASE_CANCEL:
-                if( w8k2h( $ts[TXKEY] ) > GetHeight_LeaseReset() )
-                {
-                    $procs_a = [ asset_out( $type ) => 1, WAVES_LEASE_ASSET => +$amount, $afee => -$fee ];
-                    $procs_b = [ asset_in( $type ) => 1, WAVES_LEASE_ASSET => -$amount ];
-                }
-                else
-                {
-                    $procs_a = [ asset_out( $type ) => 1, $afee => -$fee ];
-                }
-                break;
-
-            case TX_ALIAS:
-            case TX_DATA:
+            case TX_TRANSFER:
+            case TX_INVOKE:
+            case TX_DELEGATE:
+            case TX_STATIC:
+            case TX_BURNER:
             case TX_SMART_ACCOUNT:
-            case TX_SPONSORSHIP:
-            case ITX_SPONSORSHIP:
-            case TX_SMART_ASSET:
-            case TX_UPDATE_ASSET_INFO:
-            case TX_EXPRESSION:
-                $procs_a = [ asset_out( $type ) => 1, $afee => -$fee ];
-                break;
-
-            case TX_MASS_TRANSFER:
-                if( $ts[B] === MASS )
-                {
-                    if( $asset === $afee )
-                        $procs_a = [ asset_out( $type ) => 1, $asset => -$amount -$fee ];
-                    else
-                        $procs_a = [ asset_out( $type ) => 1, $asset => -$amount, $afee => -$fee ];
-                }
+                if( $asset === $afee )
+                    $procs_a = [ asset_out( $type ) => 1, $asset => gmp_neg( gmp_add( $amount, $fee ) ) ];
                 else
-                {
-                    return self::finalizeChanges( $ts[B], [ asset_in( $type ) => 1, $asset => +$amount ], $procs );
-                }
+                    $procs_a = [ asset_out( $type ) => 1, $asset => gmp_neg( $amount ), $afee => gmp_neg( $fee ) ];
+                $procs_b = [ asset_in( $type ) => 1, $asset => $amount ];
                 break;
 
             default:
@@ -288,11 +230,30 @@ class BlockchainBalances
         return $waves;
     }
 
-    public function update( $pts, $isRollback = false )
+    public function update( $pts, $isRollback, $traces )
     {
         $changes = [];
         foreach( $pts as $ts )
             $this->processChanges( $ts, $changes );
         $this->commitChanges( $changes, $isRollback );
+        if( 10 )
+        {
+            foreach( $traces as $address => $balance )
+            {
+                [ $uid, $update ] = $this->getUid( $address, WAVES_ASSET );
+                $balanceLocal = $this->amounts->getValueByKey( $uid );
+                $diff = gmp_sub( $balanceLocal, $balance );
+                $is2 = gmp_cmp( '2000000000000000000', $diff );
+                $is4 = gmp_cmp( '4000000000000000000', $diff );
+                $is6 = gmp_cmp( '6000000000000000000', $diff );
+                $is8 = gmp_cmp( '8000000000000000000', $diff );
+                if( gmp_sign( $diff ) !== 0 && $is2 !== 0 && $is4 !== 0 && $is6 !== 0 && $is8 !== 0 )
+                {
+                    require_once 'RO.php';
+                    wk()->log( ( new RO( W8DB ) )->getAddressById( $address ) );
+                    wk()->log( $diff );
+                }
+            }
+        }
     }
 }

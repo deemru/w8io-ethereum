@@ -19,7 +19,7 @@ class RO
 
     public function getTxKeyByTxId( $txid )
     {
-        $txid = d58( $txid );
+        $txid = h2b( $txid );
         if( $txid === false )
             return false;
         $bucket = unpack( 'J1', $txid )[1];
@@ -58,7 +58,7 @@ class RO
 
         $r = $this->getTxIdByTxKey->fetchAll();
         if( isset( $r[0] ) )
-            return e58( pack( 'J', (int)$r[0][0] ) . $r[0][1] );
+            return b2h( pack( 'J', (int)$r[0][0] ) . $r[0][1] );
 
         return false;
     }
@@ -232,23 +232,19 @@ class RO
         switch( $string )
         {
             case 'GENESIS': return GENESIS;
-            case 'GENERATOR': return GENERATOR;
-            case 'MATCHER': return MATCHER;
+            case 'MINER': return MINER;
+            case 'BURNER': return BURNER;
             case 'SELF': return MYSELF;
-            case 'SPONSOR': return SPONSOR;
+            case 'REWARDER': return REWARDER;
             case 'MASS': return MASS;
             default:
-            {
-                if( strlen( $string ) === 35 )
+                if( strlen( $string ) === 42 )
                 {
-                    if( $string === preg_replace( '/[^123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]/', '', $string ) )
-                        return $this->getAddressIdByAddress( $string );
+                    $binary = hex2bin( substr( $string, 2 ) );
+                    if( $binary !== false )
+                        return $this->getAddressIdByAddress( $binary );
                 }
-                else if( $string === preg_replace( '/[^\-.0123456789@_abcdefghijklmnopqrstuvwxyz\-.]/', '', $string ) )
-                    return $this->getAddressIdByAlias( $string );
-
-                return false;
-            }
+                return false;                
         }
     }
 
@@ -385,10 +381,10 @@ class RO
         static $cache =
         [
             GENESIS => 'GENESIS',
-            GENERATOR => 'GENERATOR',
-            MATCHER => 'MATCHER',
+            MINER => 'MINER',
+            BURNER => 'BURNER',
             MYSELF => 'SELF',
-            SPONSOR => 'SPONSOR',
+            REWARDER => 'REWARDER',
             MASS => 'MASS',
         ];
 
@@ -408,6 +404,8 @@ class RO
 
         $r = $this->q_getAddressById->fetchAll();
         $r = $r[0][0] ?? false;
+        if( $r !== false )
+            $r = b2h( $r );
         $cache[$id] = $r;
         return $r;
     }
@@ -519,7 +517,7 @@ class RO
 
     private $q_getBalanceByAddressId;
 
-    public function getBalanceByAddressId( $id )
+    public function getBalanceByAddressId( $id, $gmp = false )
     {
         if( !isset( $this->q_getBalanceByAddressId ) )
         {
@@ -535,8 +533,16 @@ class RO
         if( !isset( $rs[0] ) )
             return false;
 
-        foreach( $rs as $r )
-            $balance[(int)$r[0]] = (int)$r[1];
+        if( $gmp )
+        {
+            foreach( $rs as [ $asset, $amount ] )
+                $balance[$asset] = gmp_init( $amount );
+        }
+        else
+        {
+            foreach( $rs as [ $asset, $amount ] )
+                $balance[$asset] = $amount;
+        }
 
         return $balance;
     }
@@ -546,7 +552,7 @@ class RO
     public function getAssetInfoById( $id )
     {
         if( $id === 0 )
-            return '8_Waves';
+            return chr( 18 ) . '_' . W8IO_ASSET;
 
         static $cache =
         [
@@ -663,7 +669,7 @@ class RO
             $query = 'SELECT * FROM (';
             $prolog = ' SELECT * FROM ( SELECT * FROM pts WHERE ' . ( $d === 1 ? 'r4' : 'r3' ) . ' = ' . $id . ' AND r2 = ';
             $epilog = ( $uid !== false ? ' AND r0 <= ' . $uid : '' ) . ' ORDER BY r0 DESC LIMIT ' . $limit . ' )';
-            for( $i = TX_GENESIS; $i < TX_ETHEREUM; ++$i )
+            for( $i = TX_GENESIS; $i < TX_STATIC; ++$i )
             {
                 if( $i !== 1 )
                     $query .= ' UNION';

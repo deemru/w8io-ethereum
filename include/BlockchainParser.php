@@ -13,7 +13,7 @@ class BlockchainParser
     public Triples $db;
     public Triples $pts;
     public KV $kvAddresses;
-    public KV $kvAliases;
+    public KV $kvContracts;
     public KV $kvAliasInfo;
     public KV $kvAssets;
     public KV $kvAssetInfo;
@@ -29,7 +29,8 @@ class BlockchainParser
     private $kvs;
     private $recs;
     private $datarecs;
-    private $feerecs;
+    private $workfees;
+    private $workburn;
     private $workheight;
     private $qps;
     private $mts;
@@ -42,7 +43,7 @@ class BlockchainParser
         $this->pts = new Triples( $this->db, 'pts', 1,
             // uid                 | txkey    | type     | a        | b        | asset    | amount   | feeasset | fee      | addon    | group
             // r0                  | r1       | r2       | r3       | r4       | r5       | r6       | r7       | r8       | r9       | r10
-            [ 'INTEGER PRIMARY KEY', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER' ],
+            [ 'INTEGER PRIMARY KEY', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER', 'INTEGER', 'TEXT',    'INTEGER', 'TEXT',    'INTEGER', 'INTEGER' ],
           //[ 0,                     1,         1,         1,         1,         1,         0,         0,         0,         0,         1 ] );
             [ 0,                     1,         0,         0,         0,         0,         0,         0,         0,         0,         0 ] );
 
@@ -65,7 +66,7 @@ class BlockchainParser
         $this->data = new BlockchainData( $this->db );
 
         $this->kvAddresses =     ( new KV( true )  )->setStorage( $this->db, 'addresses', true );
-        $this->kvAliases =       ( new KV( true )  )->setStorage( $this->db, 'aliases', true );
+        $this->kvContracts =     ( new KV( false ) )->setStorage( $this->db, 'contracts', true, 'INTEGER PRIMARY KEY', 'INTEGER' );
         $this->kvAliasInfo =     ( new KV( false ) )->setStorage( $this->db, 'aliasInfo', true, 'INTEGER PRIMARY KEY', 'INTEGER' );
         $this->kvAssets =        ( new KV( true )  )->setStorage( $this->db, 'assets', true );
         $this->kvAssetInfo =     ( new KV( false ) )->setStorage( $this->db, 'assetInfo', true, 'INTEGER PRIMARY KEY', 'TEXT' );
@@ -77,7 +78,7 @@ class BlockchainParser
 
         $this->kvs = [
             $this->kvAddresses,
-            $this->kvAliases,
+            $this->kvContracts,
             $this->kvAliasInfo,
             $this->kvAssets,
             $this->kvAssetInfo,
@@ -88,29 +89,8 @@ class BlockchainParser
         $this->setHighs();
         $this->recs = [];
         $this->datarecs = [];
-        $this->feerecs = [];
         $this->workheight = -1;
-        $this->resetMTS(); // debug only
         $this->qps = []; // version 3 exchange price multipliers
-    }
-
-    public function resetMTS()
-    {
-        $this->mts = [];
-        for( $i = TX_SPONSOR; $i <= TX_UPDATE_ASSET_INFO; ++$i )
-            $this->mts[$i] = 0;
-    }
-
-    public function printMTS()
-    {
-        for( $i = TX_SPONSOR; $i <= TX_UPDATE_ASSET_INFO; ++$i )
-            wk()->log( sprintf( "%d) %.2f ms", $i, $this->mts[$i] * 1000 ) );
-    }
-
-    public function cacheHalving()
-    {
-        foreach( $this->kvs as $kv )
-            $kv->cacheHalving();
     }
 
     private function setSponsorship( $asset, $sponsorship )
@@ -182,47 +162,18 @@ class BlockchainParser
         return ++$this->uid;
     }
 
-    private function getSenderId( $address, $tx = null )
+    private function getSenderId( $address, bool $fake = true )
     {
-        $id = $this->kvAddresses->getKeyByValue( $address );
+        $id = $this->kvAddresses->getKeyByValue( h2b( $address ) );
         if( $id === false )
-        {
-            if( !isset( $tx ) )
-                w8_err( __FUNCTION__ );
-
-            if( isset( $tx['assetPair'] ) )
-            {
-                // workaround
-            }
-            else
-            if( !isset( $tx['stateChanges']['transfers'][0]['address'] ) ||
-                $address !== $tx['stateChanges']['transfers'][0]['address'] )
-                w8_err( __FUNCTION__ );
-
-            $this->getRecipientId( $address );
-            return $this->getSenderId( $address );
-        }
+            w8_err( __FUNCTION__ );
 
         return $id;
     }
 
     private function getRecipientId( $addressOrAlias )
     {
-        if( $addressOrAlias[0] === '3' && strlen( $addressOrAlias ) === 35 )
-            return $this->kvAddresses->getForcedKeyByValue( $addressOrAlias );
-
-        if( substr( $addressOrAlias, 0, 6 ) !== 'alias:')
-            w8_err( 'unexpected $addressOrAlias = ' . $addressOrAlias );
-
-        $id = $this->kvAliases->getKeyByValue( substr( $addressOrAlias, 8 ) );
-        if( $id === false )
-            w8_err( 'getRecipientId' );
-
-        $id = $this->kvAliasInfo->getValueByKey( $id );
-        if( $id === false )
-            w8_err( 'getRecipientId' );
-
-        return $id;
+        return $this->kvAddresses->getForcedKeyByValue( h2b( $addressOrAlias ) );
     }
 
     private function getFunctionId( $function )
@@ -230,16 +181,9 @@ class BlockchainParser
         return $this->kvFunctions->getForcedKeyByValue( $function );
     }
 
-    private function getAliasId( $alias )
+    private function isContract( $id )
     {
-        if( $alias[0] !== 'a' )
-            return 0;
-
-        $id = $this->kvAliases->getKeyByValue( substr( $alias, 8 ) );
-        if( $id === false )
-            w8_err( __FUNCTION__ );
-
-        return $id;
+        return $this->kvContracts->getValueByKey( $id ) !== false;
     }
 
     private function getNewAssetId( $tx )
@@ -275,45 +219,6 @@ class BlockchainParser
         return $id;
     }
 
-    private function applySponsorship( $txkey, &$tx )
-    {
-        if( $tx['feeAssetId'] === null )
-        {
-            $tx[FEEASSET] = WAVES_ASSET;
-            $tx[FEE] = $tx['fee'];
-            return;
-        }
-
-        $afee = $this->getAssetId( $tx['feeAssetId'] );
-        if( $txkey >= GetTxHeight_Sponsorship() )
-        {
-            $sponsorship = $this->getSponsorship( $afee );
-            assert( $sponsorship !== 0 );
-
-            $this->appendTS( [
-                UID =>      $this->getNewUid(),
-                TXKEY =>    $txkey,
-                TYPE =>     TX_SPONSOR,
-                A =>        $this->getSenderId( $tx['sender'] ),
-                B =>        $sponsorship[A],
-                ASSET =>    $afee,
-                AMOUNT =>   $tx['fee'],
-                FEEASSET => WAVES_ASSET,
-                FEE =>      gmp_intval( gmp_div( gmp_mul( $tx['fee'], 100000 ), $sponsorship[AMOUNT] ) ),
-                ADDON =>    0,
-                GROUP =>    0,
-            ] );
-
-            $tx[FEEASSET] = SPONSOR_ASSET;
-            $tx[FEE] = 0;
-        }
-        else
-        {
-            $tx[FEEASSET] = $afee;
-            $tx[FEE] = $tx['fee'];
-        }
-    }
-
     private $q_getPTS;
 
     private function getPTS( $from, $to )
@@ -331,135 +236,70 @@ class BlockchainParser
         return $this->q_getPTS->fetchAll();
     }
 
-    private $lastfees;
-
-    private function getFeesAt( $height, $reward )
-    {
-        $fees = [ WAVES_ASSET => $reward ];
-        $ngfees = [];
-
-        if( $this->workheight === $height )
-            $pts = $this->feerecs;
-        else
-        {
-            $this->flush();
-            $pts = $this->getPTS( w8h2k( $height ), w8h2kg( $height ) - 1 );
-        }
-
-        foreach( $pts as $ts )
-        {
-            $fee = $ts[FEE];
-            if( $fee === 0 || ( isset( $ts[TYPE] ) && $ts[TYPE] === TX_EXCHANGE ) ) // TX_EXCHANGE fees for MATCHER
-                continue;
-
-            $feeasset = $ts[FEEASSET];
-
-            if( $height >= GetHeight_NG() )
-            {
-                $ngfee = intdiv( $fee, 5 ) * 2;
-                $fees[$feeasset] = $ngfee + ( $fees[$feeasset] ?? 0 );
-                $ngfees[$feeasset] = $fee - $ngfee + ( $ngfees[$feeasset] ?? 0 );
-            }
-            else
-            {
-                $fees[$feeasset] = $fee + ( $fees[$feeasset] ?? 0 );
-            }
-        }
-
-        if( $height > GetHeight_NG() )
-            foreach( $this->getNGFeesAt( $height - 1 ) as $feeasset => $fee )
-                if( $fee > 0 )
-                    $fees[$feeasset] = $fee + ( $fees[$feeasset] ?? 0 );
-
-        $this->lastfees = [ $height, $ngfees ];
-        return [ $fees, $ngfees ];
-    }
-
-    private $q_getNGFeesAt;
-
-    public function getNGFeesAt( $height )
-    {
-        if( isset( $this->lastfees ) && $this->lastfees[0] === $height )
-            return $this->lastfees[1];
-
-        if( !isset( $this->q_getNGFeesAt ) )
-        {
-            $this->q_getNGFeesAt = $this->pts->db->prepare( "SELECT * FROM pts WHERE r1 == ?" );
-            if( $this->q_getNGFeesAt === false )
-                w8_err( 'getNGFeesAt' );
-        }
-
-        if( $this->q_getNGFeesAt->execute( [ w8h2kg( $height ) ] ) === false )
-            w8_err( 'getNGFeesAt' );
-
-        $pts = $this->q_getNGFeesAt->fetchAll();
-        if( count( $pts ) < 1 )
-            w8_err( "unexpected getNGFeesAt( $height )" );
-
-        $ngfees = [];
-        foreach( $pts as $ts )
-            $ngfees[$ts[ASSET]] = $ts[ADDON];
-
-        return $ngfees;
-    }
-
-    private function appendTS( $ts )
+    private function appendTS( $ts, $fees, $burn )
     {
         $this->recs[] = $ts;
-        if( $ts[FEE] !== 0 && $ts[TYPE] !== TX_EXCHANGE ) // TX_EXCHANGE fees for MATCHER
-            $this->feerecs[] = [ FEEASSET => $ts[FEEASSET], FEE => $ts[FEE] ];
+        $this->workfees = gmp_add( $this->workfees, $fees );
+        $this->workburn = gmp_add( $this->workburn, $burn );
     }
 
-    private function processGeneratorTransaction( $txkey, $tx )
+    private function processGeneratorTransaction( $txkey, $info )
     {
-        $generator = $tx['generator'];
-        $reward = $tx['reward'];
-        $rewardShares = $tx['rewardShares'];
-        if( $reward > 0 )
+        $block = $info['block'];
+        foreach( $block['withdrawals'] as $withdrawal )
         {
-            $this->processRewardTransaction( $txkey, [ 'type' => TX_REWARD, 'generator' => GENERATOR, 'recipient' => $generator, 'reward' => $reward ] );
-            foreach( $rewardShares as $address => $rewardShare )
-                if( $generator !== $address )
-                    $this->processRewardTransaction( $txkey, [ 'type' => TX_REWARD, 'generator' => $generator, 'recipient' => $address, 'reward' => $rewardShare ] );
+            $address = $withdrawal['address'];
+            $amount = gmp_mul( $withdrawal['amount'], 1000000000 );
+            if( $amount > 0 )
+                $this->processRewardTransaction( $txkey, [ 'type' => TX_REWARD, 'from' => REWARDER, 'to' => $address, 'amount' => $amount ] );
         }
 
-        [ $fees, $ngfees ] = $this->getFeesAt( w8k2h( $txkey ), 0 );
+        $miner = $this->getRecipientId( $block['miner'] );
 
-        foreach( $fees as $feeasset => $fee )
-        {
-            $this->recs[] = [
-                UID =>      $this->getNewUid(),
-                TXKEY =>    $txkey,
-                TYPE =>     TX_GENERATOR,
-                A =>        GENERATOR,
-                B =>        $this->getRecipientId( $tx['generator'] ),
-                ASSET =>    $feeasset,
-                AMOUNT =>   $fee,
-                FEEASSET => NO_ASSET,
-                FEE =>      0,
-                ADDON =>    $ngfees[$feeasset] ?? 0,
-                GROUP =>    0,
-            ];
-        }
+        $this->recs[] = [
+            UID =>      $this->getNewUid(),
+            TXKEY =>    $txkey,
+            TYPE =>     TX_MINER,
+            A =>        MINER,
+            B =>        $miner,
+            ASSET =>    WAVES_ASSET,
+            AMOUNT =>   $this->workfees,
+            FEEASSET => NO_ASSET,
+            FEE =>      0,
+            ADDON =>    0,
+            GROUP =>    0,
+        ];
 
-        $this->workheight = w8k2h( $txkey ) + 1;
-        $this->feerecs = [];
+        if( gmp_sign( $this->workburn ) !== 0 )
+        $this->recs[] = [
+            UID =>      $this->getNewUid(),
+            TXKEY =>    $txkey,
+            TYPE =>     TX_BURNER,
+            A =>        $miner,
+            B =>        BURNER,
+            ASSET =>    WAVES_ASSET,
+            AMOUNT =>   $this->workburn,
+            FEEASSET => NO_ASSET,
+            FEE =>      0,
+            ADDON =>    0,
+            GROUP =>    0,
+        ];
     }
 
     private function processRewardTransaction( $txkey, $tx )
     {
-        $generator = $tx['generator'];
-        if( $generator !== GENERATOR )
-            $generator = $this->getSenderId( $tx['generator'] );
+        $from = $tx['from'];
+        if( $from !== REWARDER )
+            $from = $this->getSenderId( $from );
 
         $this->recs[] = [
             UID =>      $this->getNewUid(),
             TXKEY =>    $txkey,
             TYPE =>     TX_REWARD,
-            A =>        $generator,
-            B =>        $this->getRecipientId( $tx['recipient'] ),
+            A =>        $from,
+            B =>        $this->getRecipientId( $tx['to'] ),
             ASSET =>    WAVES_ASSET,
-            AMOUNT =>   $tx['reward'],
+            AMOUNT =>   $tx['amount'],
             FEEASSET => NO_ASSET,
             FEE =>      0,
             ADDON =>    0,
@@ -471,63 +311,6 @@ class BlockchainParser
     {
         switch( $tx['type'] )
         {
-            case TX_INVOKE:
-                $this->appendTS( [
-                    UID =>      $this->getNewUid(),
-                    TXKEY =>    $txkey,
-                    TYPE =>     TX_INVOKE,
-                    A =>        $this->getSenderId( $tx['sender'] ),
-                    B =>        $this->getRecipientId( $tx['dApp'] ),
-                    ASSET =>    NO_ASSET,
-                    AMOUNT =>   0,
-                    FEEASSET => $tx[FEEASSET],
-                    FEE =>      $tx[FEE],
-                    ADDON =>    0,
-                    GROUP =>    FAILED_GROUP,
-                ] );
-                break;
-            case TX_ETHEREUM:
-                $payload = $tx['payload'];
-                switch( $payload['type'] )
-                {
-                    case 'invocation':
-                        $this->appendTS( [
-                            UID =>      $this->getNewUid(),
-                            TXKEY =>    $txkey,
-                            TYPE =>     TX_ETHEREUM,
-                            A =>        $this->getSenderId( $tx['sender'] ),
-                            B =>        $this->getRecipientId( $payload['dApp'] ),
-                            ASSET =>    NO_ASSET,
-                            AMOUNT =>   0,
-                            FEEASSET => $tx[FEEASSET],
-                            FEE =>      $tx[FEE],
-                            ADDON =>    0,
-                            GROUP =>    FAILED_GROUP,
-                        ] );
-                        break;
-
-                    default:
-                        w8_err( 'unknown failed payload type: ' . $payload['type'] );
-                }
-                break;
-            case TX_EXCHANGE:
-                // https://docs.waves.tech/en/blockchain/transaction/transaction-validation
-                $fee = $tx['fee'];
-                $afee = isset( $tx['feeAssetId'] ) ? $this->getAssetId( $tx['feeAssetId'] ) : WAVES_ASSET;
-                $this->appendTS( [
-                    UID =>      $this->getNewUid(),
-                    TXKEY =>    $txkey,
-                    TYPE =>     TX_MATCHER,
-                    A =>        MATCHER,
-                    B =>        $this->getRecipientId( $tx['sender'] ),
-                    ASSET =>    $afee,
-                    AMOUNT =>   -$fee,
-                    FEEASSET => $afee,
-                    FEE =>      $fee,
-                    ADDON =>    0,
-                    GROUP =>    FAILED_GROUP,
-                ] );
-                break;
             default:
                 w8_err( 'processFailedTransaction unknown type: ' . $tx['type'] );
         }
@@ -547,130 +330,7 @@ class BlockchainParser
             FEE =>      0,
             ADDON =>    0,
             GROUP =>    0,
-        ] );
-    }
-
-    private function processPaymentTransaction( $txkey, $tx )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_PAYMENT,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        $this->getRecipientId( $tx['recipient'] ),
-            ASSET =>    WAVES_ASSET,
-            AMOUNT =>   $tx['amount'],
-            FEEASSET => WAVES_ASSET,
-            FEE =>      $tx['fee'],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
-    }
-
-    private function processIssueTransaction( $txkey, $tx )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_ISSUE,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        MYSELF,
-            ASSET =>    $this->getNewAssetId( $tx ),
-            AMOUNT =>   $tx['quantity'],
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
-    }
-
-    private function processInvokeIssueTransaction( $txkey, $tx, $dApp, $function )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     ITX_ISSUE,
-            A =>        $dApp,
-            B =>        MYSELF,
-            ASSET =>    $this->getNewAssetId( $tx ),
-            AMOUNT =>   $tx['quantity'],
-            FEEASSET => NO_ASSET,
-            FEE =>      0,
-            ADDON =>    0,
-            GROUP =>    $this->getGroupFunction( $dApp, $function, TX_ISSUE ),
-        ] );
-    }
-
-    private function processReissueTransaction( $txkey, $tx )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_REISSUE,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        MYSELF,
-            ASSET =>    $this->getAssetId( $tx['assetId'] ),
-            AMOUNT =>   $tx['quantity'],
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
-    }
-
-    private function processInvokeReissueTransaction( $txkey, $tx, $dApp, $function )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     ITX_REISSUE,
-            A =>        $dApp,
-            B =>        MYSELF,
-            ASSET =>    $this->getAssetId( $tx['assetId'] ),
-            AMOUNT =>   $tx['quantity'],
-            FEEASSET => NO_ASSET,
-            FEE =>      0,
-            ADDON =>    0,
-            GROUP =>    $this->getGroupFunction( $dApp, $function, TX_REISSUE ),
-        ] );
-    }
-
-    private function processBurnTransaction( $txkey, $tx )
-    {
-        $amount = $tx['amount'] ?? $tx['quantity'];
-
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_BURN,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        MYSELF,
-            ASSET =>    $this->getAssetId( $tx['assetId'] ),
-            AMOUNT =>   $amount,
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
-    }
-
-    private function processInvokeBurnTransaction( $txkey, $tx, $dApp, $function )
-    {
-        $amount = $tx['amount'] ?? $tx['quantity'];
-
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     ITX_BURN,
-            A =>        $dApp,
-            B =>        MYSELF,
-            ASSET =>    $this->getAssetId( $tx['assetId'] ),
-            AMOUNT =>   $amount,
-            FEEASSET => NO_ASSET,
-            FEE =>      0,
-            ADDON =>    0,
-            GROUP =>    $this->getGroupFunction( $dApp, $function, TX_BURN ),
-        ] );
+        ], 0, 0 );
     }
 
     private function getQPrice( $asset )
@@ -698,397 +358,181 @@ class BlockchainParser
         return $qps;
     }
 
-    private function processExchangeTransaction( $txkey, $tx )
-    {
-        if( isset( $tx['feeAssetId'] ) )
-            w8_err();
-
-        if( $tx['order1']['orderType'] === 'buy' )
-        {
-            $buyer = $tx['order1'];
-            $seller = $tx['order2'];
-        }
-        else
-        {
-            $buyer = $tx['order2'];
-            $seller = $tx['order1'];
-        }
-
-        $ba = $this->getSenderId( $buyer['sender'], $buyer );
-        $sa = $this->getSenderId( $seller['sender'], $seller );
-
-        $basset = $buyer['assetPair']['amountAsset'];
-        $basset = isset( $basset ) ? $this->getAssetId( $basset ) : WAVES_ASSET;
-        $sasset = $buyer['assetPair']['priceAsset'];
-        $sasset = isset( $sasset ) ? $this->getAssetId( $sasset ) : WAVES_ASSET;
-
-        $bfee = $tx['buyMatcherFee'];
-        $sfee = $tx['sellMatcherFee'];
-        $fee = $tx['fee'];
-        $bafee = isset( $buyer['matcherFeeAssetId'] ) ? $this->getAssetId( $buyer['matcherFeeAssetId'] ) : WAVES_ASSET;
-        $safee = isset( $seller['matcherFeeAssetId'] ) ? $this->getAssetId( $seller['matcherFeeAssetId'] ) : WAVES_ASSET;
-        $afee = isset( $tx['feeAssetId'] ) ? $this->getAssetId( $tx['feeAssetId'] ) : WAVES_ASSET;
-
-        // MATCHER;
-        $diff = [];
-        $diff[$bafee] = $bfee;
-        $diff[$safee] = $sfee + ( $diff[$safee] ?? 0 );
-        $diff[$afee] = -$fee + ( $diff[$afee] ?? 0 );
-        foreach( $diff as $masset => $mamount )
-        {
-            if( $masset === $afee )
-            {
-                $this->appendTS( [
-                    UID =>      $this->getNewUid(),
-                    TXKEY =>    $txkey,
-                    TYPE =>     TX_MATCHER,
-                    A =>        MATCHER,
-                    B =>        $this->getRecipientId( $tx['sender'] ),
-                    ASSET =>    $masset,
-                    AMOUNT =>   $mamount,
-                    FEEASSET => $afee,
-                    FEE =>      $fee,
-                    ADDON =>    0,
-                    GROUP =>    0,
-                ] );
-            }
-            else if( $mamount )
-            {
-                $this->appendTS( [
-                    UID =>      $this->getNewUid(),
-                    TXKEY =>    $txkey,
-                    TYPE =>     TX_MATCHER,
-                    A =>        MATCHER,
-                    B =>        $this->getRecipientId( $tx['sender'] ),
-                    ASSET =>    $masset,
-                    AMOUNT =>   $mamount,
-                    FEEASSET => NO_ASSET,
-                    FEE =>      0,
-                    ADDON =>    0,
-                    GROUP =>    0,
-                ] );
-            }
-        }
-
-        if( $tx['version'] >= 3 )
-        {
-            $qa = $this->qps[$basset] ?? $this->getQPrice( $basset );
-            $qp = $this->qps[$sasset] ?? $this->getQPrice( $sasset );
-
-            $bamount = $tx['amount'];
-            $price = $tx['price'];
-            $samount = gmp_intval( gmp_div( gmp_mul( $price, $bamount ), intdiv( $qp[0], $qa[1] ) ) );
-            $addon = intdiv( $price, $qp[1] );
-        }
-        else
-        {
-            $qa = $this->qps[$basset] ?? $this->getQPrice( $basset );
-
-            $bamount = $tx['amount'];
-            $price = $tx['price'];
-            $samount = gmp_intval( gmp_div( gmp_mul( $price, $bamount ), 100000000 ) );
-            $addon = intdiv( $price, $qa[1] );
-        }
-
-        // SELLER -> BUYER
-        {
-            $this->appendTS( [
-                UID =>      $this->getNewUid(),
-                TXKEY =>    $txkey,
-                TYPE =>     TX_EXCHANGE,
-                A =>        $sa,
-                B =>        $ba,
-                ASSET =>    $basset,
-                AMOUNT =>   $bamount,
-                FEEASSET => $safee,
-                FEE =>      $sfee,
-                ADDON =>    $addon,
-                GROUP =>    $this->getGroupExchange( '>', $basset, $sasset ),
-            ] );
-        }
-
-        // BUYER -> SELLER
-        {
-            $this->appendTS( [
-                UID =>      $this->getNewUid(),
-                TXKEY =>    $txkey,
-                TYPE =>     TX_EXCHANGE,
-                A =>        $ba,
-                B =>        $sa,
-                ASSET =>    $sasset,
-                AMOUNT =>   $samount,
-                FEEASSET => $bafee,
-                FEE =>      $bfee,
-                ADDON =>    $addon,
-                GROUP =>    $this->getGroupExchange( '<', $basset, $sasset ),
-            ] );
-        }
-    }
-
     private function processTransferTransaction( $txkey, $tx )
     {
-        $asset = $tx['assetId'];
-        $asset = isset( $asset ) ? $this->getAssetId( $asset ) : WAVES_ASSET;
+        //$from = $tx['from'];
+        //if( $from === '0x82300028faf9f80c6c7fbc7c832a5f41e9779e33' )
+            //wk()->log( $from );
+        $gasUsed = $tx['receipt']['gasUsed'];
+        $fee = gmp_mul( $tx['gasPrice'], $gasUsed );
+        $burn = gmp_mul( $tx['baseFee'], $gasUsed );
 
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_TRANSFER,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        $this->getRecipientId( $tx['recipient'] ),
-            ASSET =>    $asset,
-            AMOUNT =>   $tx['amount'],
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    $this->getAliasId( $tx['recipient'] ),
-            GROUP =>    0,
-        ] );
-    }
+        if( $tx['receipt']['status'] !== '0x1' )
+        if( $tx['receipt']['status'] !== '0x0' )
+            w8_err( 'unexpected' );
 
-    private function processEthereumTransferTransaction( $txkey, $tx )
-    {
-        $asset = $tx['assetId'];
-        $asset = isset( $asset ) ? $this->getAssetId( $asset ) : WAVES_ASSET;
+        $failed = $tx['receipt']['status'] !== '0x1';
+        if( $failed )
+            wk()->log( 'failed' );
 
-        $sender = $this->getSenderId( $tx['sender'] );
-        $recipient = $this->getRecipientId( $tx['recipient'] );
+        if( $tx['gasPrice'] !== $tx['receipt']['effectiveGasPrice'] )
+            w8_err( 'unexpected' );
 
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_ETHEREUM,
-            A =>        $sender,
-            B =>        $recipient,
-            ASSET =>    NO_ASSET,
-            AMOUNT =>   0,
-            FEEASSET => NO_ASSET,
-            FEE =>      0,
-            ADDON =>    0,
-            GROUP =>    ETHEREUM_TRANSFER_GROUP,
-        ] );
+        foreach( $tx['trace']['trace'] as $trace )
+        {
+            $action = $trace['action'];
+            switch( $trace['type'] )
+            {
+                case 'call':
+                    $to = $this->getRecipientId( $action['to'] );
+                    switch( $action['callType'] )
+                    {
+                        case 'call':
+                            $method = substr( $action['input'], 2, 8 );
+                            if( $this->isContract( $to ) === false || $method === '' ) // just transfer
+                            {
+                                $this->appendTS( [
+                                    UID =>      $this->getNewUid(),
+                                    TXKEY =>    $txkey,
+                                    TYPE =>     TX_TRANSFER,
+                                    A =>        $this->getSenderId( $action['from'] ),
+                                    B =>        $to,
+                                    ASSET =>    WAVES_ASSET,
+                                    AMOUNT =>   $failed ? '0' : gmp_init( $action['value'], 16 ),
+                                    FEEASSET => WAVES_ASSET,
+                                    FEE =>      $fee,
+                                    ADDON =>    0,
+                                    GROUP =>    $failed ? FAILED_GROUP : 0,
+                                ], $fee, $burn );
+                            }
+                            else // contract call
+                            {
+                                $method = substr( $action['input'], 2, 8 );
+                                $methodInt = intval( $method, 16 );
+                                $methodStr = sprintf( '%08x', $methodInt );
+                                if( $methodStr !== $method )
+                                    w8_err( 'unexpected' );
 
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_TRANSFER,
-            A =>        $sender,
-            B =>        $recipient,
-            ASSET =>    $asset,
-            AMOUNT =>   $tx['amount'],
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    $this->getAliasId( $tx['recipient'] ),
-            GROUP =>    0,
-        ] );
-    }
+                                $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $to, $method, TX_INVOKE );
 
-    private function processInvokeTransferTransaction( $txkey, $tx, $dApp, $function )
-    {
-        $asset = $tx['asset'];
-        $asset = isset( $asset ) ? $this->getAssetId( $asset ) : WAVES_ASSET;
+                                $this->appendTS( [
+                                    UID =>      $this->getNewUid(),
+                                    TXKEY =>    $txkey,
+                                    TYPE =>     TX_INVOKE,
+                                    A =>        $this->getSenderId( $action['from'] ),
+                                    B =>        $to,
+                                    ASSET =>    WAVES_ASSET,
+                                    AMOUNT =>   $failed ? '0' : gmp_init( $action['value'], 16 ),
+                                    FEEASSET => WAVES_ASSET,
+                                    FEE =>      $fee,
+                                    ADDON =>    0,
+                                    GROUP =>    $group,
+                                ], $fee, $burn );
+                            }
+                            break;
 
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     ITX_TRANSFER,
-            A =>        $dApp,
-            B =>        $this->getRecipientId( $tx['address'] ),
-            ASSET =>    $asset,
-            AMOUNT =>   $tx['amount'],
-            FEEASSET => NO_ASSET,
-            FEE =>      0,
-            ADDON =>    $this->getAliasId( $tx['address'] ),
-            GROUP =>    $this->getGroupFunction( $dApp, $function, TX_TRANSFER ),
-        ] );
-    }
+                        case 'delegatecall':
+                            $method = substr( $action['input'], 2, 8 );
+                            $contract = $this->getRecipientId( $action['to'] );
+                            $methodInt = intval( $method, 16 );
+                            $methodStr = sprintf( '%08x', $methodInt );
+                            if( $methodStr !== $method )
+                                w8_err( 'unexpected' );
 
-    private function processLeaseTransaction( $txkey, $tx )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_LEASE,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        $this->getRecipientId( $tx['recipient'] ),
-            ASSET =>    WAVES_ASSET,
-            AMOUNT =>   $tx['amount'],
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    $this->getAliasId( $tx['recipient'] ),
-            GROUP =>    0,
-        ] );
+                            $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $contract, $method, TX_INVOKE );
 
-        $this->setLeaseInfo( $tx['id'], $tx );
-    }
+                            $this->appendTS( [
+                                UID =>      $this->getNewUid(),
+                                TXKEY =>    $txkey,
+                                TYPE =>     TX_DELEGATE,
+                                A =>        $this->getSenderId( $action['from'] ),
+                                B =>        $contract,
+                                ASSET =>    WAVES_ASSET,
+                                AMOUNT =>   $failed ? '0' : gmp_init( $action['value'], 16 ),
+                                FEEASSET => WAVES_ASSET,
+                                FEE =>      $fee,
+                                ADDON =>    0,
+                                GROUP =>    $group,
+                            ], $fee, $burn );
+                            break;
 
-    private function processInvokeLeaseTransaction( $txkey, $tx, $dApp, $function )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     ITX_LEASE,
-            A =>        $dApp,
-            B =>        $this->getRecipientId( $tx['recipient'] ),
-            ASSET =>    WAVES_ASSET,
-            AMOUNT =>   $tx['amount'],
-            FEEASSET => NO_ASSET,
-            FEE =>      0,
-            ADDON =>    $this->getAliasId( $tx['recipient'] ),
-            GROUP =>    $this->getGroupFunction( $dApp, $function, TX_LEASE ),
-        ] );
+                        case 'staticcall':
+                            $method = substr( $action['input'], 2, 8 );
+                            $contract = $this->getRecipientId( $action['to'] );
+                            $methodInt = intval( $method, 16 );
+                            $methodStr = sprintf( '%08x', $methodInt );
+                            if( $methodStr !== $method )
+                                w8_err( 'unexpected' );
 
-        $this->setLeaseInfo( $tx['id'], $tx );
-    }
+                            $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $contract, $method, TX_INVOKE );
 
-    private function processLeaseCancelTransaction( $txkey, $tx )
-    {
-        $ltx = $this->getLeaseInfo( $tx['leaseId'] );
+                            $this->appendTS( [
+                                UID =>      $this->getNewUid(),
+                                TXKEY =>    $txkey,
+                                TYPE =>     TX_STATIC,
+                                A =>        $this->getSenderId( $action['from'] ),
+                                B =>        $contract,
+                                ASSET =>    WAVES_ASSET,
+                                AMOUNT =>   $failed ? '0' : gmp_init( $action['value'], 16 ),
+                                FEEASSET => WAVES_ASSET,
+                                FEE =>      $fee,
+                                ADDON =>    0,
+                                GROUP =>    $group,
+                            ], $fee, $burn );
+                            break;
+                        default:
+                            w8_err( 'unknown callType = ' . $action['callType'] );
+                    }
+                    break;
 
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_LEASE_CANCEL,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        $this->getRecipientId( $ltx['recipient'] ),
-            ASSET =>    WAVES_ASSET,
-            AMOUNT =>   $ltx['amount'],
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
-    }
+                case 'create':
+                    if( $failed )
+                    {
+                        $B = MYSELF;
+                        $AMOUNT = '0';
+                        $GROUP = FAILED_GROUP;
+                    }
+                    else
+                    {
+                        $B = $this->getRecipientId( $trace['result']['address'] );
+                        $AMOUNT = gmp_init( $action['value'], 16 );
+                        $GROUP = 0;
 
-    private function processInvokeLeaseCancelTransaction( $txkey, $tx, $dApp, $function )
-    {
-        $ltx = $this->getLeaseInfo( $tx['id'] );
+                        $this->kvContracts->setKeyValue( $B, 1 );
+                    }
+                    $this->appendTS( [
+                        UID =>      $this->getNewUid(),
+                        TXKEY =>    $txkey,
+                        TYPE =>     TX_SMART_ACCOUNT,
+                        A =>        $this->getSenderId( $action['from'] ),
+                        B =>        $B,
+                        ASSET =>    WAVES_ASSET,
+                        AMOUNT =>   $AMOUNT,
+                        FEEASSET => WAVES_ASSET,
+                        FEE =>      $fee,
+                        ADDON =>    0,
+                        GROUP =>    $GROUP,
+                    ], $fee, $burn );
+                    break;
 
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     ITX_LEASE_CANCEL,
-            A =>        $dApp,
-            B =>        $this->getRecipientId( $ltx['recipient'] ),
-            ASSET =>    WAVES_ASSET,
-            AMOUNT =>   $ltx['amount'],
-            FEEASSET => NO_ASSET,
-            FEE =>      0,
-            ADDON =>    0,
-            GROUP =>    $this->getGroupFunction( $dApp, $function, TX_LEASE_CANCEL ),
-        ] );
-    }
+                default:
+                    w8_err( 'unknown action type = ' . $trace['type'] );
+            }
 
-    private function processAliasTransaction( $txkey, $tx )
-    {
-        $a = $this->getSenderId( $tx['sender'] );
-        $id = $this->kvAliases->getForcedKeyByValue( $tx['alias'] );
-        $this->kvAliasInfo->setKeyValue( $id, $a );
+            if( $failed )
+                break;
 
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_ALIAS,
-            A =>        $a,
-            B =>        MYSELF,
-            ASSET =>    NO_ASSET,
-            AMOUNT =>   0,
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    $id,
-            GROUP =>    0,
-        ] );
-    }
+            $fee = 0;
+            $burn = 0;
+        }
 
-    private function processMassTransferTransaction( $txkey, $tx )
-    {
-        $a = $this->getSenderId( $tx['sender'] );
-        $asset = $tx['assetId'];
-        $asset = isset( $asset ) ? $this->getAssetId( $asset ) : WAVES_ASSET;
-
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_MASS_TRANSFER,
-            A =>        $a,
-            B =>        MASS,
-            ASSET =>    $asset,
-            AMOUNT =>   $tx['totalAmount'],
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
-
-        foreach( $tx['transfers'] as $mtx )
-            $this->appendTS( [
-                UID =>      $this->getNewUid(),
-                TXKEY =>    $txkey,
-                TYPE =>     TX_MASS_TRANSFER,
-                A =>        $a,
-                B =>        $this->getRecipientId( $mtx['recipient'] ),
-                ASSET =>    $asset,
-                AMOUNT =>   $mtx['amount'],
-                FEEASSET => NO_ASSET,
-                FEE =>      0,
-                ADDON =>    $this->getAliasId( $mtx['recipient'] ),
-                GROUP =>    0,
-            ] );
-    }
-
-    private function processDataTransaction( $txkey, $tx )
-    {
-        $a = $this->getSenderId( $tx['sender'] );
-
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_DATA,
-            A =>        $a,
-            B =>        MYSELF,
-            ASSET =>    NO_ASSET,
-            AMOUNT =>   0,
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
-
-        foreach( $tx['data'] as $data )
-            $this->datarecs[] = [ $txkey, $a, $data ];
-    }
-
-    private function processSmartAccountTransaction( $txkey, $tx )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_SMART_ACCOUNT,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        MYSELF,
-            ASSET =>    NO_ASSET,
-            AMOUNT =>   0,
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
-    }
-
-    private function processSmartAssetTransaction( $txkey, $tx )
-    {
-        $this->appendTS( [
-            UID =>      $this->getNewUid(),
-            TXKEY =>    $txkey,
-            TYPE =>     TX_SMART_ASSET,
-            A =>        $this->getSenderId( $tx['sender'] ),
-            B =>        MYSELF,
-            ASSET =>    $this->getAssetId( $tx['assetId'] ),
-            AMOUNT =>   0,
-            FEEASSET => $tx[FEEASSET],
-            FEE =>      $tx[FEE],
-            ADDON =>    0,
-            GROUP =>    0,
-        ] );
+        foreach( $tx['trace']['stateDiff'] as $address => $state )
+        {
+            $address = $this->getRecipientId( $address );
+            $balance = $state['balance']['*']['to'] ?? false;
+            if( $balance !== false )
+                $this->traces[$address] = $balance;
+        }
     }
 
     private function getGroupExchange( $sb, $basset, $sasset )
@@ -1218,23 +662,6 @@ class BlockchainParser
         $addon = $this->getAliasId( $tx['dApp'] );
         $function = $this->getFunctionId( $tx['call']['function'] ?? 'default' );
         $group = $this->getGroupFunction( $dApp, $function, TX_INVOKE );
-
-        if( $ethereum )
-        {
-            $this->appendTS( [
-                UID =>      $this->getNewUid(),
-                TXKEY =>    $txkey,
-                TYPE =>     TX_ETHEREUM,
-                A =>        $sender,
-                B =>        $dApp,
-                ASSET =>    NO_ASSET,
-                AMOUNT =>   0,
-                FEEASSET => NO_ASSET,
-                FEE =>      0,
-                ADDON =>    0,
-                GROUP =>    $group,
-            ] );
-        }
 
         $this->appendTS( [
             UID =>      $this->getNewUid(),
@@ -1397,65 +824,30 @@ class BlockchainParser
 
     public function processTransaction( $txkey, $tx )
     {
+        $height = w8k2h( $txkey );
+        if( $this->workheight !== $height )
+        {
+            $this->flush();
+            $this->workheight = $height;
+            $this->workfees = gmp_init( 0 );
+            $this->workburn = gmp_init( 0 );
+        }
+
         $type = $tx['type'];
-        if( $type === TX_GENERATOR )
+        if( $type === TX_MINER )
             return $this->processGeneratorTransaction( $txkey, $tx );
         if( $type === TX_GENESIS )
             return $this->processGenesisTransaction( $txkey, $tx );
-
-        $this->applySponsorship( $txkey, $tx );
-
-        if( isset( $tx['applicationStatus'] ) )
-            switch( $tx['applicationStatus'] )
-            {
-                case 'succeeded':
-                    break;
-                case 'script_execution_failed':
-                    return $this->processFailedTransaction( $txkey, $tx );
-                default:
-                    w8_err( 'applicationStatus unknown: ' . $tx['applicationStatus'] );
-            }
 
         //$tt = microtime( true );
 
         switch( $type )
         {
-            case TX_PAYMENT:
-                $this->processPaymentTransaction( $txkey, $tx ); break;
-            case TX_ISSUE:
-                $this->processIssueTransaction( $txkey, $tx ); break;
-            case TX_TRANSFER:
+            case '0x0':
+            case '0x2':
                 $this->processTransferTransaction( $txkey, $tx ); break;
-            case TX_REISSUE:
-                $this->processReissueTransaction( $txkey, $tx ); break;
-            case TX_BURN:
-                $this->processBurnTransaction( $txkey, $tx ); break;
-            case TX_EXCHANGE:
-                $this->processExchangeTransaction( $txkey, $tx ); break;
-            case TX_LEASE:
-                $this->processLeaseTransaction( $txkey, $tx ); break;
-            case TX_LEASE_CANCEL:
-                $this->processLeaseCancelTransaction( $txkey, $tx ); break;
-            case TX_ALIAS:
-                $this->processAliasTransaction( $txkey, $tx ); break;
-            case TX_MASS_TRANSFER:
-                $this->processMassTransferTransaction( $txkey, $tx ); break;
-            case TX_DATA:
-                $this->processDataTransaction( $txkey, $tx ); break;
-            case TX_SMART_ACCOUNT:
-                $this->processSmartAccountTransaction( $txkey, $tx ); break;
-            case TX_SMART_ASSET:
-                $this->processSmartAssetTransaction( $txkey, $tx ); break;
-            case TX_SPONSORSHIP:
-                $this->processSponsorshipTransaction( $txkey, $tx ); break;
             case TX_INVOKE:
                 $this->processInvokeTransaction( $txkey, $tx ); break;
-            case TX_UPDATE_ASSET_INFO:
-                $this->processUpdateAssetInfoTransaction( $txkey, $tx ); break;
-            case TX_EXPRESSION:
-                $this->processExpressionTransaction( $txkey, $tx ); break;
-            case TX_ETHEREUM:
-                $this->processEthereumTransaction( $txkey, $tx ); break;
 
             default:
                 w8_err( 'unknown' );
@@ -1469,7 +861,7 @@ class BlockchainParser
         if( count( $this->recs ) )
         {
             $this->pts->merge( $this->recs );
-            $this->balances->update( $this->recs );
+            $this->balances->update( $this->recs, false, $this->traces );
             $this->recs = [];
 
             if( count( $this->datarecs ) )
@@ -1497,12 +889,14 @@ class BlockchainParser
         $this->sponsorships->reset();
         $this->leases->reset();
         $this->setHighs();
-        $this->feerecs = [];
         $this->workheight = -1;
     }
 
+    private $traces;
+
     public function update( $txs )
     {
+        $this->traces = [];
         // if global start not begin from FULL pts per block
         // append current PTS to track block fee
         foreach( $txs as $txkey => $tx )

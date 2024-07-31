@@ -35,7 +35,7 @@ function selftest( $start, $apikey )
         $aid = $assetId === 'WAVES' ? WAVES_ASSET : $RO->getIdByAsset( $assetId );
         $info = $RO->getAssetInfoById( $aid );
 
-        $decimals = ( $decimals = $info[0] ) === 'N' ? 0 : (int)$decimals;
+        $decimals = ord( $info[0] );
         $asset = substr( $info, 2 );
 
         $node_items = [];
@@ -123,7 +123,6 @@ switch( $argv[1] )
     case 'updater':
     case 'firstrun':
     {
-        wk()->setBestNode();
         wk()->log( wk()->getNodeAddress() );
         $upstats['firstrun'] = true;
         w8_upstats( $upstats );
@@ -192,7 +191,6 @@ switch( $argv[1] )
         $cmds =
         [
             'CREATE INDEX IF NOT EXISTS balances_r1_r2_index ON balances( r1, r2 )',
-            'CREATE INDEX IF NOT EXISTS pts_r4_r2_index ON pts( r4, r2 )',
             'CREATE INDEX IF NOT EXISTS data_r3_r4_index ON data( r3, r4 )',
         ];
 

@@ -17,10 +17,10 @@ const ADDON = 9;
 const GROUP = 10;
 
 const GENESIS = 0;
-const GENERATOR = -1;
-const MATCHER = -2;
+const MINER = -1;
+const BURNER = -2;
 const MYSELF = -3;
-const SPONSOR = -4;
+const REWARDER = -4;
 const MASS = -5;
 
 const TX_GENESIS = 1;
@@ -39,12 +39,12 @@ const TX_SMART_ACCOUNT = 13;
 const TX_SPONSORSHIP = 14;
 const TX_SMART_ASSET = 15;
 const TX_INVOKE = 16;
-const TX_UPDATE_ASSET_INFO = 17;
-const TX_ETHEREUM = 18;
+const TX_DELEGATE = 17;
+const TX_STATIC = 18;
 const TX_EXPRESSION = 19;
 
-const TX_GENERATOR = 0;
-const TX_MATCHER = -1;
+const TX_MINER = 0;
+const TX_BURNER = -1;
 const TX_SPONSOR = -2;
 const TX_REWARD = -7;
 
@@ -60,8 +60,8 @@ const ITX_INVOKE = -TX_INVOKE;
 const TYPE_STRINGS =
 [
     TX_SPONSOR => 'sponsor',
-    TX_MATCHER => 'matcher',
-    TX_GENERATOR => 'fees',
+    TX_BURNER => 'burn',
+    TX_MINER => 'miner',
     TX_REWARD => 'reward',
 
     TX_GENESIS => 'genesis',
@@ -82,14 +82,14 @@ const TYPE_STRINGS =
     TX_ALIAS => 'alias',
     TX_MASS_TRANSFER => 'mass',
     TX_DATA => 'data',
-    TX_SMART_ACCOUNT => 'smart account',
+    TX_SMART_ACCOUNT => 'contract',
     TX_SPONSORSHIP => 'sponsorship',
     ITX_SPONSORSHIP => 'sponsorship',
     TX_SMART_ASSET => 'smart asset',
     TX_INVOKE => 'invoke',
     ITX_INVOKE => 'invoke',
-    TX_UPDATE_ASSET_INFO => 'rename',
-    TX_ETHEREUM => 'ethereum',
+    TX_DELEGATE => 'delegate',
+    TX_STATIC => 'static',
     TX_EXPRESSION => 'expression',
 ];
 
@@ -122,7 +122,7 @@ function w8io_amount( $amount, $decimals, $pad = 20, $setSign = true )
     if( $amount < 0 )
     {
         $sign = $setSign ? '-' : '';
-        $amount = (string)-$amount;
+        $amount = gmp_neg( $amount );
     }
     else
     {
