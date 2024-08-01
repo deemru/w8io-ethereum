@@ -161,47 +161,70 @@ class Blockchain
         return $header['hash'];
     }
 
-    public function getBlockAt( int $height ) : array|false
+    public function getHeight() : int|false
     {
-        $local = localBlocks()->getValueByKey( $height );
-        if( $local !== false )
+        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return intval( $json['result'], 16 );
+    }
+
+    public function getBlockMinimal( $number ) : array|false
+    {
+        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",false],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'];
+    }
+
+    public function getBlock( $number ) : array|false
+    {
+        $local = localBlocks()->getValueByKey( $number );
+        if( 0 && $local !== false )
         {
             localBlocks()->reset();
             return $local;
         }
 
-        $json = sprintf( '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x%x", true],"id":1}', $height );
-        $data = wk()->fetch( '/', true, $json );
-        if( $data === false || false === ( $data = jd( $data ) ) || !isset( $data['result'] ) )
-        {
-            wk()->log( 'e', 'eth_getBlockByNumber( ' . $height . ' )' );
+        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",true],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
             return false;
-        }
-        return $data['result'];
+
+        return $json['result'];
     }
 
-    public function getTracesAt( int $height ) : array|false
+    public function getBlockTraces( $number ) : array|false
     {
-        $local = localTraces()->getValueByKey( $height );
-        if( $local !== false )
+        $local = localTraces()->getValueByKey( $number );
+        if( 0 && $local !== false )
         {
             localTraces()->reset();
             return $local;
         }
 
-        $json = sprintf( '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x%x", true],"id":1}', $height );
-        $data = wk()->fetch( '/', true, $json );
-        if( $data === false || false === ( $data = jd( $data ) ) || !isset( $data['result'] ) )
-        {
-            wk()->log( 'e', 'eth_getBlockByNumber( ' . $height . ' )' );
+        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"trace_replayBlockTransactions","params":["0x' . dechex( $number ) . '",["trace","stateDiff"]],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
             return false;
-        }
-        return $data['result'];
+
+        return $json['result'];
     }
 
-    public function getHeight() : int
+    public function getBlockReceipts( $number ) : array|false
     {
-        return 950000;
+        $local = localTraces()->getValueByKey( $number );
+        if( 0 && $local !== false )
+        {
+            localTraces()->reset();
+            return $local;
+        }
+
+        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockReceipts","params":["0x' . dechex( $number ) . '"],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'];
     }
 
     public function update( $block = null )
@@ -235,7 +258,8 @@ class Blockchain
         else
         for( $i = $from + 1;; )
         {
-            $block = $this->getBlockAt( $i );
+            $block = $this->getBlockMinimal( $i );
+            $block = $this->getBlock( $i );
             if( $block === false )
             {
                 wk()->log( 'w', 'OFFLINE: cannot get block' );
@@ -274,7 +298,7 @@ class Blockchain
         {
             if( $blockHeight !== $i )
             {
-                $block = $this->getBlockAt( $i );
+                $block = $this->getBlock( $i );
                 if( $block === false )
                 {
                     wk()->log( 'w', 'OFFLINE: cannot get block' );
@@ -295,15 +319,16 @@ class Blockchain
             if( $n )
             {
                 $baseFee = $block['baseFeePerGas'];
-                $traces = $this->getTracesAt( $i );
+                $traces = $this->getBlockTraces( $i );
+                $receipts = $this->getBlockReceipts( $i );
                 $key = w8h2k( $i );
                 for( $j = 0; $j < $n; ++$j, ++$key )
                 {
                     $tx = $txs[$j];
                     $hash = $tx['hash'];
                     $txTrace = $traces[$j];
-                    $txReceipt = localReceipts()->getValueByKey( $hash );
-                    localReceipts()->reset();
+                    $txReceipt = $receipts[$j];//localReceipts()->getValueByKey( $hash );
+                    //localReceipts()->reset();
                     if( $hash !== $txTrace['transactionHash'] ||
                         $hash !== $txReceipt['transactionHash'] ||
                         $blockHash !== $txReceipt['blockHash'] ||
