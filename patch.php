@@ -27,7 +27,7 @@ if( 10 )
     foreach( $cmds as $cmd )
     {
         $tt = microtime( true );
-        $cmd = 'sqlite3 ' . W8IO_DB_PATH . ' "' . $cmd . '"';
+        $cmd = 'sqlite3 ' . W8IO_MAIN_DB . ' "' . $cmd . '"';
         wk()->log( 'exec( ' . $cmd . ' )' );
         exec( $cmd );
         wk()->log( sprintf( '%.00f seconds', ( microtime( true ) - $tt ) ) );

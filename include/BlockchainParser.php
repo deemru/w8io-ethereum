@@ -36,6 +36,7 @@ class BlockchainParser
     private $mts;
     private $getSponsorship;
     private $uid;
+    private $contracts;
 
     public function __construct( $db )
     {
@@ -91,6 +92,9 @@ class BlockchainParser
         $this->datarecs = [];
         $this->workheight = -1;
         $this->qps = []; // version 3 exchange price multipliers
+
+        foreach( $this->kvContracts->db->query( 'SELECT r0 FROM contracts' ) as $value )
+            $this->contracts[$value[0]] = true;
     }
 
     private function setSponsorship( $asset, $sponsorship )
@@ -183,7 +187,13 @@ class BlockchainParser
 
     private function isContract( $id )
     {
-        return $this->kvContracts->getValueByKey( $id ) !== false;
+        return $this->contracts[$id] ?? false;
+    }
+
+    private function setContract( $id )
+    {
+        $this->contracts[$id] = true;
+        $this->kvContracts->setKeyValue( $id, 1 );
     }
 
     private function getNewAssetId( $tx )
@@ -498,7 +508,7 @@ class BlockchainParser
                         $AMOUNT = gmp_init( $action['value'], 16 );
                         $GROUP = 0;
 
-                        $this->kvContracts->setKeyValue( $B, 1 );
+                        $this->setContract( $B );
                     }
                     $this->appendTS( [
                         UID =>      $this->getNewUid(),

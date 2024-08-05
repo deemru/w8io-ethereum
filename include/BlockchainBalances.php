@@ -19,19 +19,19 @@ class BlockchainBalances
     {
         $this->db = $db;
         $this->balances = new Triples( $this->db, 'balances', 1,
-            // uid                 | address  | asset    | balance
-            // r0                  | r1       | r2       | r3
-            [ 'INTEGER PRIMARY KEY', 'INTEGER', 'INTEGER', 'TEXT' ],
-//          [ 0,                     1,         1,         0 ] );
-            [ 0,                     0,         0,         0 ] );
+            // uid                 | address  | asset    | balance | float
+            // r0                  | r1       | r2       | r3      | r4
+            [ 'INTEGER PRIMARY KEY', 'INTEGER', 'INTEGER', 'TEXT',   'REAL' ],
+//          [ 0,                     1,         1,         0,        0 ] );
+            [ 0,                     0,         0,         0,        0 ] );
 
 /*
         $indexer =
         [
             'CREATE INDEX IF NOT EXISTS balances_r1_index ON balances( r1 )',
             'CREATE INDEX IF NOT EXISTS balances_r2_index ON balances( r2 )',
-            'CREATE INDEX IF NOT EXISTS balances_r2_r3_index ON balances( r2, r3 )',
             'CREATE INDEX IF NOT EXISTS balances_r1_r2_index ON balances( r1, r2 )',
+            'CREATE INDEX IF NOT EXISTS balances_r2_r4_index ON balances( r2, r4 )',
         ];
 */
 
@@ -57,11 +57,6 @@ class BlockchainBalances
     private function getNewUid()
     {
         return ++$this->uid;
-    }
-
-    public function setParser( $parser )
-    {
-        $this->parser = $parser;
     }
 
     private static function finalizeChanges( $aid, $temp_procs, &$procs )
@@ -121,12 +116,12 @@ class BlockchainBalances
     {
         if( !isset( $this->q_insertBalance ) )
         {
-            $this->q_insertBalance = $this->balances->db->prepare( 'INSERT INTO balances( r0, r1, r2, r3 ) VALUES( ?, ?, ?, ? )' );
+            $this->q_insertBalance = $this->balances->db->prepare( 'INSERT INTO balances( r0, r1, r2, r3, r4 ) VALUES( ?, ?, ?, ?, ? )' );
             if( $this->q_insertBalance === false )
                 w8_err( 'insertBalance' );
         }
 
-        if( false === $this->q_insertBalance->execute( [ $uid, $address, $asset, $amount ] ) )
+        if( false === $this->q_insertBalance->execute( [ $uid, $address, $asset, $amount, (float)$amount ] ) )
             w8_err( 'insertBalance' );
 
         $this->amounts->setKeyValue( $uid, $amount );
@@ -155,13 +150,13 @@ class BlockchainBalances
 
         if( !isset( $this->q_updateBalance ) )
         {
-            $this->q_updateBalance = $this->balances->db->prepare( 'UPDATE balances SET r3 = ? WHERE r0 = ?' );
+            $this->q_updateBalance = $this->balances->db->prepare( 'UPDATE balances SET r3 = ?, r4 = ? WHERE r0 = ?' );
             if( $this->q_updateBalance === false )
                 w8_err( 'updateBalance' );
         }
 
         $amount = gmp_add( $before, $amount );
-        if( false === $this->q_updateBalance->execute( [ $amount, $uid ] ) )
+        if( false === $this->q_updateBalance->execute( [ $amount, (float)$amount, $uid ] ) )
             w8_err( 'updateBalance' );
 
         $this->amounts->setKeyValue( $uid, $amount );
@@ -250,7 +245,7 @@ class BlockchainBalances
                 if( gmp_sign( $diff ) !== 0 && $is2 !== 0 && $is4 !== 0 && $is6 !== 0 && $is8 !== 0 )
                 {
                     require_once 'RO.php';
-                    wk()->log( ( new RO( W8DB ) )->getAddressById( $address ) );
+                    wk()->log( ( new RO )->getAddressById( $address ) );
                     wk()->log( $diff );
                 }
             }

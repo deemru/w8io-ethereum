@@ -12,7 +12,7 @@ function wk( $full = true ) : WavesKit
 
     if( !isset( $wk ) )
     {
-        $wk = new WavesKit( W8IO_NETWORK, [ 'w', 'e', 'i', 's' ] );
+        $wk = new WavesKit( 'E', [ 'w', 'e', 'i', 's' ] );
         if( $full )
         {
             $nodes = explode( '|', W8IO_NODES );
@@ -32,16 +32,20 @@ function w8_err( $message = '(no message)' )
     trigger_error( $message, E_USER_ERROR );
 }
 
-define( 'W8IO_DB_DIR', __DIR__ . '/var/db/' );
-define( 'W8IO_DB_PATH', W8IO_DB_DIR . 'blockchain.sqlite3' );
-define( 'W8DB', 'sqlite:' . W8IO_DB_PATH );
+define( 'W8IO_ASSET', 'Unit0' );
+define( 'W8IO_DECIMALS', 18 );
+define( 'W8IO_NODES', 'http://127.0.0.1:8545' );
 
-define( 'W8IO_NODES', 'http://127.0.0.1:6869|https://nodes.wavesexplorer.com' );
-define( 'W8IO_MATCHER', 'https://matcher.waves.exchange' );
-define( 'W8IO_NETWORK', 'W' ); // 'W' -- mainnet, 'T' -- testnet
+define( 'W8IO_DB_DIR', __DIR__ . '/var/db/' );
+define( 'W8IO_MAIN_DB', W8IO_DB_DIR . 'blockchain.sqlite3' );
+define( 'W8IO_CACHE_DB', W8IO_DB_DIR . 'cache.sqlite3' );
+
 define( 'W8IO_ROOT', '/' );
-define( 'W8IO_MAX_UPDATE_BATCH', 1 ); // set more on when on a local node
+define( 'W8IO_MAX_UPDATE_BATCH', 16 );
 define( 'W8IO_UPDATE_DELAY', 1 );
-define( 'W8IO_UPDATE_PROCS', 1 );
-define( 'WK_CURL_TIMEOUT', 15 );
+define( 'W8IO_OFFLINE_DELAY', 5 );
+define( 'W8IO_RPC_API_TIMEOUT', 60 );
+define( 'W8IO_RPC_API_CONCURENCY', 8 );
+define( 'WK_CURL_TIMEOUT', W8IO_RPC_API_TIMEOUT );
 define( 'W8IO_MAX_MEMORY', 1024 * 1024 * 1024 );
+define( 'W8IO_ANALYTICS', '' );

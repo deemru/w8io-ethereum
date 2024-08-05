@@ -11,7 +11,7 @@ require_once __DIR__ . '/include/w8_update_helpers.php';
 function selftest( $start, $apikey )
 {
     require_once 'include/RO.php';
-    $RO = new RO( W8DB );
+    $RO = new RO;
     $height = wk()->height() - 1;
     $local_height = $RO->getLastHeightTimestamp()[0];
     if( $local_height < $height )
@@ -150,13 +150,13 @@ switch( $argv[1] )
     }
     case 'indexer':
     {
-        $db = W8IO_DB_PATH;
+        $db = W8IO_MAIN_DB;
         $cmds =
         [
             'CREATE INDEX IF NOT EXISTS balances_r1_index ON balances( r1 )',
             'CREATE INDEX IF NOT EXISTS balances_r2_index ON balances( r2 )',
-            'CREATE INDEX IF NOT EXISTS balances_r2_r3_index ON balances( r2, r3 )',
             'CREATE INDEX IF NOT EXISTS balances_r1_r2_index ON balances( r1, r2 )',
+            'CREATE INDEX IF NOT EXISTS balances_r2_r4_index ON balances( r2, r4 )',
 
             'CREATE INDEX IF NOT EXISTS pts_r2_index ON pts( r2 )',
             'CREATE INDEX IF NOT EXISTS pts_r3_index ON pts( r3 )',
@@ -175,7 +175,7 @@ switch( $argv[1] )
         foreach( $cmds as $cmd )
         {
             $tt = microtime( true );
-            $cmd = 'sqlite3 ' . W8IO_DB_PATH . ' "' . $cmd . '"';
+            $cmd = 'sqlite3 ' . W8IO_MAIN_DB . ' "' . $cmd . '"';
             wk()->log( 'exec( ' . $cmd . ' )' );
             exec( $cmd );
             wk()->log( sprintf( '%.00f seconds', ( microtime( true ) - $tt ) ) );
@@ -187,7 +187,7 @@ switch( $argv[1] )
     }
     case 'onbreak':
     {
-        $db = W8IO_DB_PATH;
+        $db = W8IO_MAIN_DB;
         $cmds =
         [
             'CREATE INDEX IF NOT EXISTS balances_r1_r2_index ON balances( r1, r2 )',
@@ -197,7 +197,7 @@ switch( $argv[1] )
         foreach( $cmds as $cmd )
         {
             $tt = microtime( true );
-            $cmd = 'sqlite3 ' . W8IO_DB_PATH . ' "' . $cmd . '"';
+            $cmd = 'sqlite3 ' . W8IO_MAIN_DB . ' "' . $cmd . '"';
             wk()->log( 'exec( ' . $cmd . ' )' );
             exec( $cmd );
             wk()->log( sprintf( '%.00f seconds', ( microtime( true ) - $tt ) ) );
@@ -209,14 +209,14 @@ switch( $argv[1] )
     }
     case 'wipe':
     {
-        if( file_exists( W8IO_DB_PATH ) )
+        if( file_exists( W8IO_MAIN_DB ) )
         {
-            wk()->log( 'w', W8IO_DB_PATH );
+            wk()->log( 'w', W8IO_MAIN_DB );
             wk()->log( 'w', 'DATABASE WILL BE DESTROYED after 10 seconds...' );
             sleep( 10 );
         }
 
-        $db = W8IO_DB_PATH;
+        $db = W8IO_MAIN_DB;
         $db_shm = "$db-shm";
         $db_wal = "$db-wal";
         $files = [ $db, $db_shm, $db_wal,
@@ -298,31 +298,26 @@ function updater()
     require_once __DIR__ . '/include/BlockchainData.php';
 
     $blockchain = new Blockchain( W8DB );
-
-    $procs = defined( 'W8IO_UPDATE_PROCS' ) && W8IO_UPDATE_PROCS;
-    $sleep = defined( 'W8IO_UPDATE_DELAY') ? W8IO_UPDATE_DELAY : 17;
     $break = w8_upstats()['updater'] === false;
 
     for( ;; )
     {
         $status = $blockchain->update();
 
-        if( defined( W8IO_MAX_MEMORY ) && memory_get_usage( true ) > W8IO_MAX_MEMORY )
+        if( defined( 'W8IO_MAX_MEMORY' ) && memory_get_usage( true ) > W8IO_MAX_MEMORY )
         {
-            wk()->log( 'w', 'restart updater()' );
-            sleep( $sleep );
+            wk()->log( 'w', 'W8IO_MAX_MEMORY reached' );
+            sleep( W8IO_UPDATE_DELAY );
             break;
         }
 
         if( $status === W8IO_STATUS_UPDATED )
             continue;
 
-        if( $procs )
+        if( $status === W8IO_STATUS_OFFLINE )
         {
-            procResetInfo( $blockchain->parser );
-            if( W8IO_NETWORK === 'W' )
-                procScam( $blockchain->parser );
-            procWeight( $blockchain, $blockchain->parser );
+            sleep( W8IO_OFFLINE_DELAY );
+            continue;
         }
 
         if( $break )
@@ -334,6 +329,6 @@ function updater()
             break;
         }
 
-        sleep( $sleep );
+        sleep( W8IO_UPDATE_DELAY );
     }
 }

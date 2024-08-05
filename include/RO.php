@@ -10,9 +10,9 @@ class RO
 {
     public Triples $db;
 
-    public function __construct( $db )
+    public function __construct()
     {
-        $this->db = new Triples( $db, 'pts' );
+        $this->db = new Triples( W8IO_MAIN_DB, 'pts' );
     }
 
     private $getTxKeyByTxId;

@@ -78,7 +78,7 @@ if( $address === 'api' )
         {
             case 't':
             {
-                $RO = new RO( W8DB );
+                $RO = new RO;
 
                 $aid = $call['i'];
                 $where = $call['w'];
@@ -93,7 +93,7 @@ if( $address === 'api' )
             }
             case 'd':
             {
-                $RO = new RO( W8DB );
+                $RO = new RO;
 
                 $address = $call['a'];
                 $aid = $call['i'];
@@ -111,7 +111,7 @@ if( $address === 'api' )
             }
             case 'k':
             {
-                $RO = new RO( W8DB );
+                $RO = new RO;
 
                 $address = $call['a'];
                 $key = $call['k'];
@@ -136,7 +136,7 @@ if( $address === 'api' )
     if( $f === 'height' )
     {
         require_once 'include/RO.php';
-        $RO = new RO( W8DB );
+        $RO = new RO;
         $json = $RO->getLastHeightTimestamp();
         if( $json === false )
             apiexit( 503, [ 'code' => 503, 'message' => 'database unavailable' ] );
@@ -146,7 +146,7 @@ if( $address === 'api' )
     if( $f === 'alive' )
     {
         require_once 'include/RO.php';
-        $RO = new RO( W8DB );
+        $RO = new RO;
         $json = $RO->getLastHeightTimestamp();
         if( $json === false )
             apiexit( 503, [ 'code' => 503, 'message' => 'database unavailable' ] );
@@ -165,7 +165,7 @@ if( $address === 'api' )
 if( $address === 'j13' )
 {
     require_once 'include/RO.php';
-    $RO = new RO( W8DB );
+    $RO = new RO;
     $q = $RO->db->query( 'SELECT * FROM pts WHERE r2 = 13 ORDER BY r0 DESC LIMIT 100' );
     $n = 0;
     $json = [];
@@ -187,7 +187,7 @@ if( $address === 'j13' )
 if( $address === 'tx' && is_numeric( $f ) )
 {
     require_once 'include/RO.php';
-    $RO = new RO( W8DB );
+    $RO = new RO;
 
     if( w8k2h( $f ) === w8k2h( $f + 1 ) - 1 )
         exit( header( 'location: ' . W8IO_ROOT . 'b/' . w8k2h( $f ) ) );
@@ -200,7 +200,7 @@ else
 if( $address === 'tk' && $f !== false && strlen( $f ) >= 32 )
 {
     require_once 'include/RO.php';
-    $RO = new RO( W8DB );
+    $RO = new RO;
 
     $txkey = $RO->getTxKeyByTxId( $f );
     exit( (string)$txkey );
@@ -209,7 +209,7 @@ else
 if( $address === 'top' && $f !== false )
 {
     require_once 'include/RO.php';
-    $RO = new RO( W8DB );
+    $RO = new RO;
 
     if( is_numeric( $f ) )
     {
@@ -242,7 +242,7 @@ if( $address === 'MINERS' )
     //$showtime = true;
 
     if( $f === false )
-        $f = 1472;
+        $f = 1472 * 4;
 
     $f = intval( $f );
     $n = min( max( $f, isset( $showtime ) ? 1 : 80 ), 100000 );
@@ -436,17 +436,17 @@ function w8io_print_distribution( $f, $aid, $info, $n )
     $decimals = ord( $info[0] );
     $asset = substr( $info, 2 );
 
-    $balances = $RO->db->query( 'SELECT * FROM balances WHERE r2 = ' . $aid . ' ORDER BY r3 DESC LIMIT ' . $n );
+    $balances = $RO->db->query( 'SELECT * FROM balances WHERE r2 = ' . $aid . ' ORDER BY r4 DESC LIMIT ' . $n );
     $total = 0;
     $n = 0;
     $out = '';
     foreach( $balances as $balance )
     {
-        $amount = (int)$balance[3];
-        if( $amount <= 0 )
+        $amount = gmp_init( $balance[3] );
+        if( gmp_sign( $amount) <= 0 )
             break;
-        $total += $amount;
-        $aid = (int)$balance[1];
+        $total = gmp_add( $total, $amount );
+        $aid = $balance[1];
         $address = $RO->getAddressById( $aid );
         $out .= str_pad( ++$n, 5, ' ', STR_PAD_LEFT ) . ') <a href="' . W8IO_ROOT . $address . '/f/' . $f . '">' . $address . '</a>: ' . w8io_amount( $amount, $decimals ) . PHP_EOL;
     }
@@ -849,9 +849,9 @@ function w8io_height( $height )
     return '<a href=' . W8IO_ROOT . 'b/' . $height . '>' . $height . '</a>';
 }
 
-function w8io_txid( $txid, $tx )
+function w8io_txid( $txid )
 {
-    return '<a href=' . W8IO_ROOT . ( isset( $tx['assetPair'] ) ? 'o/' : 'tx/' ) . $txid . '>' . $txid . '</a>';
+    return '<a href=' . W8IO_ROOT . 'tx/' . $txid . '>' . $txid . '</a>';
 }
 
 function htmlfilter( $kv )
@@ -868,10 +868,14 @@ function htmlfilter( $kv )
                 switch( $k )
                 {
                     case 'transactionHash':
-                    case 'hash': $v = w8io_txid( $v, $kv ); break;
+                    case 'hash':
+                        $v = w8io_txid( $v, $kv );
+                        break;
                     case 'from':
-                    case 'to': $v = w8io_a( $v ); break;
-                    case 'attachment': $fkv[$k . '-decoded'] = htmlentities( trim( preg_replace( '/\s+/', ' ', wk()->base58Decode( $v ) ) ) );
+                    case 'to':
+                        if( strlen( $v ) === 42 )
+                            $v = w8io_a( $v );
+                        break;
                     default:
                         if( !isset( $v ) )
                             $v = null;
@@ -908,7 +912,7 @@ function htmlscript( $tx, $txkey, $txid, $compacted )
     }
 
     require_once 'include/RO.php';
-    $RO = new RO( W8DB );
+    $RO = new RO;
     $a = $RO->getAddressIdByAddress( $tx['sender'] );
     if( $a === false )
         return;
@@ -999,7 +1003,7 @@ if( $address === 'tx' && $f !== false )
     {
         prolog();
         require_once 'include/RO.php';
-        $RO = new RO( W8DB );
+        $RO = new RO;
         $txid = $RO->getTxKeyByTxId( $f );
         if( $txid === false )
         {
@@ -1015,7 +1019,9 @@ if( $address === 'tx' && $f !== false )
             echo json_encode( [ 'error' => "getTxKeyByTxId( $f ) failed" ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
         else
         {
-            $tx = localReceipts()->getValueByKey( $f );
+            require_once 'include/ROC.php';
+            $ROC = new ROC;
+            $tx = $ROC->getTransactionByHash( $f );
             if( $tx === false )
                 echo json_encode( [ 'error' => "getTransactionById( $f ) failed" ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
             else
@@ -1078,42 +1084,13 @@ if( $address === 'tx' && $f !== false )
     }
 }
 else
-if( $address === 'o' && $f !== false )
-{
-    if( strlen( $f ) >= 32 && 32 === strlen( wk()->base58Decode( $f ) ) )
-    {
-        prolog();
-        $matcher = clone wk();
-        $matcher->setNodeAddress( W8IO_MATCHER );
-        $json = $matcher->fetch( '/matcher/transactions/' . $f, false, null, null, [ 'Connection: close' ] );
-        unset( $matcher );
-        if( $json === false || false === ( $json = wk()->json_decode( $json ) ) )
-            echo json_encode( [ 'error' => "fetch( /matcher/transactions/$f ) failed" ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-        else
-        {
-            require_once 'include/RO.php';
-            $RO = new RO( W8DB );
-            foreach( (array)$json as $tx )
-            {
-                $id = $tx['id'];
-                $txid = $RO->getTxKeyByTxId( $id );
-                if( $txid === false )
-                    echo json_encode( [ 'error' => "getTxKeyByTxId( $id ) failed" ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
-                else
-                    w8io_print_transactions( false, 'r1 = ' . $txid, false, 1000, 'txs', 3 );
-            }
-
-            $json = htmlfilter( $json );
-            echo '<br>' . json_encode( $json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-        }
-    }
-}
-else
 if( $address === 'b' )
 {
     prolog();
     $height = (int)$f;
-    $block = localBlocks()->getValueByKey( $height );
+    require_once 'include/ROC.php';
+    $ROC = new ROC;
+    $block = $ROC->getBlockByNumber( $height );
 
     if( $block === false )
     {
@@ -1139,8 +1116,8 @@ if( $address === 'b' )
         $block['height'] = w8io_height( $height );
         $block['next'] = w8io_height( $height + 1 );
         $ftxs = [];
-        foreach( $txs as $tx )
-            $ftxs[] = htmlfilter( $tx );
+        foreach( $txs as $v )
+            $ftxs[] = w8io_txid( $v );
         $block['transactionsCount'] = count( $ftxs );
         $block['transactions'] = $ftxs;
         $block = array_merge( $firsts, $block );
@@ -1162,7 +1139,7 @@ if( $address === 'MINERS' )
     $arg = $arg !== false ? intval( $arg ) : null;
 
     require_once 'include/RO.php';
-    $RO = new RO( W8DB );
+    $RO = new RO;
 
     $generators = $RO->getGeneratorsFees( $n, $arg );
 
@@ -1195,7 +1172,8 @@ if( $address === 'MINERS' )
     $totime = $RO->getTimestampByHeight( $to );
 
     $q = $n / $Q;
-    $qb = max( intdiv( (int)$q, 16 ), 5 );
+    $qb1 = max( intdiv( (int)$q, 16 ), 5 );
+    $qb2 = $qb1 * 4;
 
     $period = $totime - $fromtime;
     $period = round( $period / 3600 );
@@ -1254,7 +1232,7 @@ if( $address === 'MINERS' )
         $fee = 0;
         foreach( $pts as $block => $amount )
         {
-            $target = $Q - 1 - (int)floor( ( $to - $block ) / $q );
+            $target = max( 0, $Q - 1 - (int)floor( ( $to - $block ) / $q ) );
             $matrix[$target]++;
             $fee += $amount;
         }
@@ -1268,9 +1246,9 @@ if( $address === 'MINERS' )
             $blocks = $matrix[$i];
             if( $blocks === 0 )
                 $blocks = '-';
-            elseif( $blocks === 1 )
+            elseif( $blocks <= $qb1 )
                 $blocks = 'o';
-            elseif( $blocks <= $qb )
+            elseif( $blocks <= $qb2 )
                 $blocks = 'O';
             else
                 $blocks = '<b>O</b>';
@@ -1299,171 +1277,10 @@ if( $address === 'MINERS' )
             echo PHP_EOL;
 }
 else
-if( $address === 'ACTIVATION' )
-{
-    prolog();
-    if( $f !== false )
-    {
-        $f = intval( $f );
-        $addon = '/ ' . $f . ' ';
-    }
-    else
-    {
-        $f = false;
-        $addon = '';
-    }
-
-    require_once 'include/RO_headers.php';
-    $RO = new RO_headers;
-
-    $hi = $RO->db->getHigh( 0 );
-    $headers = $RO->kv->getValueByKey( $hi );
-    $height = $headers['height'];
-
-    echo "ACTIVATION $addon<hr>";
-
-    if( $f === false )
-    {
-        $activation = wk()->fetch( '/activation/status' );
-        if( $activation === false )
-            exit( 'offline' );
-
-        $activation = wk()->json_decode( $activation );
-        $json = htmlfilter( $activation );
-        $output = json_encode( $json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-        $output = str_replace( W8IO_ROOT . 'tx', W8IO_ROOT . 'ACTIVATION', $output );
-        echo $output;
-    }
-    else
-    {
-        $cache_file = W8IO_DB_DIR . 'votingInterval';
-        if( file_exists( $cache_file ) )
-            $votingInterval = intval( file_get_contents( $cache_file ) );
-        else
-        {
-            $activation = wk()->fetch( '/activation/status' );
-            if( $activation === false )
-                exit( 'offline' );
-
-            $activation = wk()->json_decode( $activation );
-            $votingInterval = $activation['votingInterval'];
-            file_put_contents( $cache_file, $votingInterval );
-        }
-
-        $period_number = $arg !== false ? intval( $arg ) : intdiv( $height, $votingInterval );
-
-        $period_start = $period_number * $votingInterval + 1;
-        $period_end = $period_start + $votingInterval - 1;
-
-        $tt_start = $RO->kv->getValueByKey( $period_start )['timestamp'] ?? false;
-        $tt_end = $RO->kv->getValueByKey( $period_end )['timestamp'] ?? false;
-
-        $past_blocks = 10000;
-        $tt_past = $RO->kv->getValueByKey( $height - $past_blocks )['timestamp'] ?? false;
-        if( $tt_past !== false )
-        {
-            $tt_now = $headers['timestamp'];
-            $block_speed = intdiv( $tt_now - $tt_past, $past_blocks );
-            if( $tt_start === false )
-            {
-                $blocks_left = $period_start - $height;
-                $tt_left = $blocks_left * $block_speed;
-                $tt_start = $tt_now + $tt_left;
-            }
-            if( $tt_end === false )
-            {
-                $blocks_left = $period_end - $height;
-                $tt_left = $blocks_left * $block_speed;
-                $tt_end = $tt_now + $tt_left;
-            }
-        }
-
-        $period_dates = $tt_start === false ? '' :
-            ( ' (' . date( 'Y.m.d H:i', intdiv( $tt_start, 1000 ) + $z * 60 ) . ' .. '
-                   . date( 'Y.m.d H:i', intdiv( $tt_end, 1000 ) + $z * 60 ) . ')' );
-
-        $link_prolog = '<a href="' . W8IO_ROOT . 'ACTIVATION/' . $f . '/';
-        echo '    previous: ' . $link_prolog . ( $period_number - 1 ) . '">' . ( $period_start - $votingInterval ) . ' .. ' . ( $period_end - $votingInterval ) . '</a>' . PHP_EOL;
-        echo '     current: ' . $link_prolog . ( $period_number + 0 ) . '">' . ( $period_start ) . ' .. ' . ( $period_end ) . '</a>' . $period_dates . PHP_EOL;
-        echo '        next: ' . $link_prolog . ( $period_number + 1 ) . '">' . ( $period_start + $votingInterval ) . ' .. ' . ( $period_end + $votingInterval ) . '</a>' . PHP_EOL;
-        echo '      height: ' . $height . PHP_EOL;
-        $tt_left = $tt_left ?? 0;
-        $days = intdiv( $tt_left, 1000 * 3600 * 24 );
-        $tt_days = $days * 1000 * 3600 * 24;
-        $hours = intdiv( $tt_left - $tt_days, 1000 * 3600 );
-        $tt_hours = $hours * 1000 * 3600;
-        $minutes = intdiv( $tt_left - $tt_days - $tt_hours, 1000 * 60 );
-        echo '        left: ' . $days . 'd ' . $hours . 'h '. $minutes . 'm' . PHP_EOL . PHP_EOL;
-
-        //foreach( $activation['features'] as $feature )
-        {
-            //if( intval( $feature['id'] ) === $f )
-            {
-                $votes = [];
-                $totals = [];
-                $lasts = [];
-                $count = 0;
-                if( $period_start === 0 )
-                    $period_start = 1;
-                for( $i = $period_start; $i <= $period_end && $i <= $height; ++$i )
-                {
-                    $headers = $RO->kv->getValueByKey( $i );
-                    $generator = $headers['generator'] ?? '';
-                    $features = $headers['features'] ?? [];
-                    $totals[$generator] = 1 + ( $totals[$generator] ?? 0 );
-                    if( in_array( $f, $features ) )
-                    {
-                        $votes[$generator] = 1 + ( $votes[$generator] ?? 0 );
-                        $lasts[$generator] = true;
-                        ++$count;
-                    }
-                    else
-                        $lasts[$generator] = false;
-                }
-
-                if( $i > $period_start )
-                {
-                    $weight = 0;
-                    $blocks = $i - $period_start;
-                    foreach( $totals as $generator => $total )
-                    {
-                        if( $lasts[$generator] )
-                            $weight += $total / $blocks;
-                    }
-
-                    $blocks_done = $i - $period_start;
-                    $blocks_total = $period_end - $period_start + 1;
-                    $blocks_left = $blocks_total - $blocks_done;
-                    $addon = $blocks_left * $weight;
-                    $forecast = (int)( $count + $addon );
-                    $current_percent = intdiv( 10000 * $count, $blocks_done );
-                    $forecast_percent = intdiv( 10000 * $forecast, $blocks_total );
-                    $future_blocks = (int)( $votingInterval * $weight );
-                    $future_percent = intdiv( 10000 * $future_blocks, $votingInterval );
-
-                    echo '     SUPPORT: ' . w8io_amount( $current_percent, 2, 6, false ) . '% <small>(' . $count . '/' . $blocks_done . ')</small>' . PHP_EOL;
-                    echo '    FORECAST: ' . w8io_amount( $forecast_percent, 2, 6, false ) . '% <small>(' . $forecast . '/' . $blocks_total . ')</small>' . PHP_EOL;
-                    echo '      FUTURE: ' . w8io_amount( $future_percent, 2, 6, false ) . '% <small>(' . $future_blocks . '/' . $votingInterval . ')</small>' . PHP_EOL . PHP_EOL;
-
-                    arsort( $totals );
-
-                    foreach( $totals as $generator => $total )
-                    {
-                        $vote = ( $votes[$generator] ?? 0 );
-                        $percent = intdiv( 10000 * $vote, $total );
-                        $percent_total = intdiv( 10000 * $vote, $blocks_done );
-                        $last = $lasts[$generator] ? '&#183;' : ' ';
-                        echo '    ' . w8io_a( $generator ) . ': ' . w8io_amount( $percent_total, 2, 6, false ) . '% ' . $last . ' <small>'. w8io_amount( $percent, 2, 6, false ) .'% (' . $vote . '/' . $total . ')</small>' . PHP_EOL;
-                    }
-                }
-            }
-        }
-    }
-}
-else if( $f === 'data' )
+if( $f === 'data' )
 {
     require_once 'include/RO.php';
-    $RO = new RO( W8DB );
+    $RO = new RO;
 
     $aid = $RO->getAddressIdByString( $address );
     if( $aid === false )
@@ -1525,7 +1342,7 @@ else
     if( !isset( $RO ) )
     {
         require_once 'include/RO.php';
-        $RO = new RO( W8DB );
+        $RO = new RO;
     }
 
     $aid = $RO->getAddressIdByString( $address );

@@ -2,8 +2,6 @@
 
 namespace w8io;
 
-use deemru\ABCode;
-
 const UID = 0;
 const TXKEY = 1;
 const TYPE = 2;
@@ -107,10 +105,52 @@ function w8k2i( $key ){ return $key & 0xFFFFFFFF; }
 function w8k2h( $key ){ return $key >> 32; }
 function w8h2k( $height, $i = 0 ){ return ( $height << 32 ) | $i; }
 function w8h2kg( $height ){ return w8h2k( $height + 1 ) - 1; }
-function d58( $data ){ return ABCode::base58()->decode( $data ); }
-function e58( $data ){ return ABCode::base58()->encode( $data ); }
-function json_unpack( $data ){ return json_decode( gzinflate( $data ), true, 512, JSON_BIGINT_AS_STRING ); }
-function json_pack( $data ){ return gzdeflate( json_encode( $data ), 9 ); }
+
+function h2b( string $hex ) : string
+{
+    $data = hex2bin( substr( $hex, 2 ) );
+    if( $data === false )
+        w8_err( 'failed: hex2bin()' );
+    return $data;
+}
+
+function b2h( string $data ) : string
+{
+    return '0x' . bin2hex( $data );
+}
+
+function jd( string $data ) : array|false
+{
+    $json = json_decode( $data, true, 512, JSON_BIGINT_AS_STRING );
+    return $json === null ? false : $json;
+}
+
+function je( array $json ) : string
+{
+    $data = json_encode( $json );
+    if( $data === false )
+        w8_err( 'failed: json_encode()' );
+    return $data;
+}
+
+function jzd( string $zdata ) : array
+{
+    $data = gzinflate( $zdata );
+    if( $data === false )
+        w8_err( 'failed: gzinflate()' );
+    $json = jd( $data );
+    if( $json === false )
+        w8_err( 'failed: jzd()' );
+    return $json;
+}
+
+function jze( $data ) : string
+{
+    $zdata = gzdeflate( je( $data ), 9 );
+    if( $zdata === false )
+        w8_err( 'failed: gzdeflate()' );
+    return $zdata;
+}
 
 const TX_ASSET_IN = -10000;
 const TX_ASSET_OUT = -20000;
