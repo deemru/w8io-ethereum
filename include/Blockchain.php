@@ -116,19 +116,6 @@ class Blockchain
         $this->setTxHeight();
     }
 
-    private function fixate( $fixate )
-    {
-        $this->parser->rollback( $fixate );
-        $this->ts->query( 'DELETE FROM ts WHERE r0 >= ' . $fixate );
-
-        $height = w8k2h( $fixate );
-        $txfrom = w8k2i( $this->txheight ) + 1;
-        $fixate = w8k2i( $fixate );
-        wk()->log( 'i', $height . ' (' . $txfrom . ' >> ' . $fixate . ') (fixate)' );
-
-        $this->setTxHeight();
-    }
-
     private function blockUnique( $header )
     {
         return $header['hash'];
@@ -153,7 +140,7 @@ class Blockchain
             return $local;
         }
 
-        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",true],"id":1}' );
+        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",false],"id":1}' );
         if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
             return false;
 
@@ -178,6 +165,22 @@ class Blockchain
         return $json['result'];
     }
 
+    public function getBlockTrace( $number )
+    {
+        $json = wk()->fetch( '/', true, $this->traceRequest( $number ) );
+        if( $json === false || false === ( $json = jd( $json ) ) )
+            return false;
+
+        $block = $json[0]['result'] ?? false;
+        $traces = $json[1]['result'] ?? false;
+        $receipts = $json[2]['result'] ?? false;
+
+        if( $block === false || $traces === false || $receipts === false )
+            return false;
+
+        return [ $block, $traces, $receipts ];
+    }
+
     private $cacheClient;
     private $cacheTo;
     private $cacheIterator;
@@ -186,9 +189,9 @@ class Blockchain
 
     private function cacheSync()
     {
-        wk()->log( 'cacheSync: +' . count( $this->cacheBlocks ) . ' (' . count( $this->cacheTxs ) . ')' );
         if( count( $this->cacheBlocks ) )
         {
+            //wk()->log( 'cacheSync: +' . count( $this->cacheBlocks ) . ' (' . count( $this->cacheTxs ) . ')' );
             $this->cacheDB->begin();
             {
                 $this->kvBlocks->db->merge( $this->cacheBlocks );
@@ -229,25 +232,36 @@ class Blockchain
         \React\EventLoop\Loop::get()->addTimer( $delay, $callback );
     }
 
+    private function traceRequest( $number )
+    {
+        $hexnumber = dechex( $number );
+        return
+'[
+    {"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . $hexnumber . '",true],"id":0},
+    {"jsonrpc":"2.0","method":"trace_replayBlockTransactions","params":["0x' . $hexnumber . '",["trace","stateDiff"]],"id":1},
+    {"jsonrpc":"2.0","method":"eth_getBlockReceipts","params":["0x' . $hexnumber . '"],"id":2}
+]';
+    }
+
     private function cacheStep( $number = false )
     {
         if( $number === false )
         {
-            $number = $this->cacheNext();
-            if( $number === false )
-                return;
-            $local = $this->kvBlocks->db->getUno( 0, $number );
-            if( $local !== false )
-                return;
+            for( ;; )
+            {
+                $number = $this->cacheNext();
+                if( $number === false )
+                    return;
+                $local = $this->kvBlocks->db->query( 'SELECT 1 FROM blocks WHERE r0 = ' . $number )->fetchColumn();
+                if( $local === false )
+                    break;
+            }
         }
 
-        $request = '
-        [
-            {"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",true],"id":0},
-            {"jsonrpc":"2.0","method":"trace_replayBlockTransactions","params":["0x' . dechex( $number ) . '",["trace","stateDiff"]],"id":1},
-            {"jsonrpc":"2.0","method":"eth_getBlockReceipts","params":["0x' . dechex( $number ) . '"],"id":2}
-        ]';
-        ( $this->cacheClient->post( wk()->getNodeAddress(), [], $request ) )->then(
+        //wk()->log( $number );
+        //exit;
+
+        ( $this->cacheClient->post( wk()->getNodeAddress(), [], $this->traceRequest( $number ) ) )->then(
             function ( \Psr\Http\Message\ResponseInterface $response ) use ( $number )
             {
                 $body = (string)$response->getBody();
@@ -293,6 +307,9 @@ class Blockchain
 
                 $block['transactions'] = $hashes;
                 $this->cacheBlocks[] = [ $number, jze( $block ) ];
+
+                if( count( $this->cacheBlocks ) >= 100 )
+                    $this->cacheSync();
 
                 //wk()->log( 'cacheStep( ' . $number . ' ) +' . $n );
                 $this->cacheStep();
@@ -376,6 +393,7 @@ class Blockchain
         $txCount = 0;
         $cacheBlocks = [];
         $cacheTxs = [];
+        $cacheCount = 0;
 
         $to = min( $height, $from + W8IO_MAX_UPDATE_BATCH - 1 );
         for( /* $i = $from */; $i <= $to; $i++ )
@@ -398,14 +416,15 @@ class Blockchain
             }
 
             $blockHash = $block['hash'];
-            $txs = $block['transactions'];
-            $n = count( $txs );
-            if( $n )
+            $hashes = $block['transactions'];
+            $n = count( $hashes );
+            if( $block['cached'] ?? false )
             {
-                $key = w8h2k( $i );
-                if( $block['cached'] ?? false )
+                ++$cacheCount;
+                if( $n )
                 {
-                    foreach( $txs as $hash )
+                    $key = w8h2k( $i );
+                    foreach( $hashes as $hash )
                     {
                         $tx = $this->kvTxs->getValueByKey( h2b( $hash ) );
                         if( $tx === false )
@@ -413,39 +432,35 @@ class Blockchain
                         $this->kvTxs->reset();
                         $newTxs[$key++] = $tx;
                     }
+                    $txheight = $key - 1;
                 }
-                else
+            }
+            else
+            {
+                if( $n )
                 {
-                    //w8_err( 'work cache only' );
-                    $baseFee = $block['baseFeePerGas'];
+                    $key = w8h2k( $i );
+                    $result = $this->getBlockTrace( $i );
+                    if( $result === false )
+                    {
+                        wk()->log( 'w', 'OFFLINE: cannot get block trace' );
+                        return W8IO_STATUS_OFFLINE;
+                    }
+                    [ $block, $traces, $receipts ] = $result;
                     $txs = $block['transactions'];
-                    $traces = $this->getBlockTraces( $i );
-                    if( $traces === false )
-                    {
-                        wk()->log( 'w', 'OFFLINE: cannot get traces' );
-                        return W8IO_STATUS_OFFLINE;
-                    }
-                    $receipts = $this->getBlockReceipts( $i );
-                    if( $receipts === false )
-                    {
-                        wk()->log( 'w', 'OFFLINE: cannot get receipts' );
-                        return W8IO_STATUS_OFFLINE;
-                    }
+                    $baseFee = $block['baseFeePerGas'];
 
-                    $hashes = [];
                     for( $j = 0; $j < $n; ++$j )
                     {
                         $tx = $txs[$j];
                         $receipt = $receipts[$j];
                         $trace = $traces[$j];
+                        $hash = $hashes[$j];
 
-                        $hash = $tx['hash'];
-                        $hashes[] = $hash;
-                        if( $hash !== $trace['transactionHash'] ||
+                        if( $hash !== $tx['hash'] ||
+                            $hash !== $trace['transactionHash'] ||
                             $hash !== $receipt['transactionHash'] ||
-                            $blockHash !== $receipt['blockHash'] ||
-                            $i !== intval( $receipt['blockNumber'], 16 ) ||
-                            $j !== intval( $receipt['transactionIndex'], 16 ) )
+                            $blockHash !== $receipt['blockHash'] )
                         {
                             wk()->log( 'w', 'on-the-fly transaction change @ ' . $i );
                             return W8IO_STATUS_WARNING;
@@ -458,42 +473,22 @@ class Blockchain
                         $newTxs[$key++] = $tx;
                         $cacheTxs[] = [ h2b( $hash ), jze( $tx ) ];
                     }
-
+                    $txheight = $key - 1;
                     $block['transactions'] = $hashes;
-                    $cacheBlocks[] = [ $i, jze( $block ) ];
                 }
 
-                $txheight = $key - 1;
+                $cacheBlocks[] = [ $i, jze( $block ) ];
             }
 
-            if( !isset( $fixate ) )
-                $fixate = w8h2k( $i, $n );
-
-            unset( $block['transactions'] );
             $reference = $blockHash;
             $newHdrs[$i] = $block;
-
-            if( 0 && $i > $from )
-            {
-                wk()->log( ( $i - 1 ) . ' (' . $txCount . ')' );
-                $txCount = 0;
-            }
-
             $txCount += $n;
         }
-
-        if( 0 === count( $newHdrs ) )
-            return W8IO_STATUS_NORMAL;
 
         $this->db->begin();
         {
             if( isset( $rollback ) )
                 $this->rollback( $from );
-            else if( $this->txheight >= $fixate )
-            {
-                $this->fixate( $fixate );
-                $txCount -= w8k2i( $fixate );
-            }
 
             $parserTxs = $newTxs;
 
@@ -534,10 +529,10 @@ class Blockchain
         }
 
         $this->lastUp = microtime( true );
-        $newTxs = $from === $to ? ( ' +' . count( $newTxs ) ) : '';
         $ram = memory_get_usage( true ) / 1024 / 1024;
         $ram = sprintf( '%.00f MiB', $ram );
-        wk()->log( 's', $to . ' (' . $txCount . ')' . $newTxs . ' (' . (int)( ( $this->lastUp - $entrance ) * 1000 ) . ' ms) (' . $ram . ')' );
+        $cacheCount = $cacheCount ? ( ' (' . $cacheCount . ' cached)' ) : '';
+        wk()->log( 's', ( $from - 1 ) . ' -> ' . $to . str_pad( ' +' . $txCount, 7, ' ', STR_PAD_LEFT ) . ' txs in ' . (int)( ( $this->lastUp - $entrance ) * 1000 ) . ' ms' . $cacheCount . ' (' . $ram . ')' );
         return W8IO_STATUS_UPDATED;
     }
 }

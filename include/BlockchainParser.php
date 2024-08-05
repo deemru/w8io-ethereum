@@ -382,8 +382,6 @@ class BlockchainParser
             w8_err( 'unexpected' );
 
         $failed = $tx['receipt']['status'] !== '0x1';
-        if( $failed )
-            wk()->log( 'failed' );
 
         if( $tx['gasPrice'] !== $tx['receipt']['effectiveGasPrice'] )
             w8_err( 'unexpected' );

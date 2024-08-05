@@ -286,7 +286,7 @@ function rollback( $block )
     require_once __DIR__ . '/include/BlockchainBalances.php';
     require_once __DIR__ . '/include/BlockchainData.php';
 
-    $blockchain = new Blockchain( W8DB );
+    $blockchain = new Blockchain( W8IO_MAIN_DB );
     $blockchain->rollback( $block + 1 );
 }
 
@@ -297,7 +297,7 @@ function updater()
     require_once __DIR__ . '/include/BlockchainBalances.php';
     require_once __DIR__ . '/include/BlockchainData.php';
 
-    $blockchain = new Blockchain( W8DB );
+    $blockchain = new Blockchain( W8IO_MAIN_DB );
     $break = w8_upstats()['updater'] === false;
 
     for( ;; )
