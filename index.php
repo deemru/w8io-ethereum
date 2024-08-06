@@ -844,6 +844,11 @@ function is_address( $value )
     return is_string( $value ) && strlen( $value ) === 42;
 }
 
+function is_hash( $value )
+{
+    return is_string( $value ) && strlen( $value ) === 66;
+}
+
 function w8io_height( $height )
 {
     return '<a href=' . W8IO_ROOT . 'b/' . $height . '>' . $height . '</a>';
@@ -869,11 +874,12 @@ function htmlfilter( $kv )
                 {
                     case 'transactionHash':
                     case 'hash':
-                        $v = w8io_txid( $v, $kv );
+                        if( is_hash( $v ) )
+                            $v = w8io_txid( $v );
                         break;
                     case 'from':
                     case 'to':
-                        if( strlen( $v ) === 42 )
+                        if( is_address( $v ) )
                             $v = w8io_a( $v );
                         break;
                     default:
