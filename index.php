@@ -1818,11 +1818,11 @@ if( !isset( $L ) )
 
 echo '</pre></td></tr></table>';
 echo '<hr><div width="100%" align="right"><pre><small>';
-echo "<a href=\"https://github.com/deemru/w8io\">github/deemru/w8io</a>";
+echo "<a href=\"https://github.com/deemru/w8io-ethereum\">github/deemru/w8io-ethereum</a>";
 if( file_exists( '.git/FETCH_HEAD' ) )
 {
     $rev = file_get_contents( '.git/FETCH_HEAD', false, null, 0, 40 );
-    echo "/<a href=\"https://github.com/deemru/w8io/commit/$rev\">" . substr( $rev, 0, 7 ) . '</a> ';
+    echo "/<a href=\"https://github.com/deemru/w8io-ethereum/commit/$rev\">" . substr( $rev, 0, 7 ) . '</a> ';
 }
 if( !isset( $showtime ) )
 {
