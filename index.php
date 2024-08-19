@@ -1177,6 +1177,8 @@ if( $address === 'MINERS' )
         foreach( $L1_MINERS as $address )
         {
             $l2_address = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/miner_' . $address . '_RewardAddress' );
+            if( $l2_address === false )
+                $l2_address = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/miner' . $address . 'RewardAddress' );
             if( $l2_address !== false )
             {
                 $l2_address = jd( $l2_address );
