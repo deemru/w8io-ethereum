@@ -1219,8 +1219,12 @@ if( $address === 'MINERS' )
                 $to = $height;
         }
 
-        $infos[$generator] = [ 'balance' => $balance, 'pts' => $pts ];
+        $infos[$address] = [ 'balance' => $balance, 'pts' => $pts ];
     }
+
+    foreach( $map_addresses as $address => $l1_address )
+        if( !isset( $infos[$address] ) )
+            $infos[$address] = [ 'balance' => $map_balances[$l1_address] ?? 0, 'pts' => [] ];
 
     $fromtime = $RO->getTimestampByHeight( $from );
     $totime = $RO->getTimestampByHeight( $to );
@@ -1264,9 +1268,8 @@ if( $address === 'MINERS' )
     uasort( $generators, function( $a, $b ){ return( $a['balance'] < $b['balance'] ? 1 : -1 ); } );
 
     $n = 0;
-    foreach( $generators as $id => $generator )
+    foreach( $generators as $address => $generator )
     {
-        $address = $RO->getAddressById( $id );
         $alias = false;
         $padlen = max( 23 - strlen( $alias ), 0 );
 
