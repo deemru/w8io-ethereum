@@ -1149,7 +1149,7 @@ if( $address === 'MINERS' )
 
     $map_addresses_file = W8IO_DB_DIR . 'map_addresses.json';
     $map_balances_file = W8IO_DB_DIR . 'map_balances.json';
-    if( file_exists( $map_addresses_file ) && time() - filemtime( $map_addresses_file ) < 300 )
+    if( 0 && file_exists( $map_addresses_file ) && time() - filemtime( $map_addresses_file ) < 300 )
     {
         $map_addresses = jd( file_get_contents( $map_addresses_file ) );
         $map_balances = jd( file_get_contents( $map_balances_file ) );
@@ -1176,13 +1176,19 @@ if( $address === 'MINERS' )
         $map_addresses = [];
         foreach( $L1_MINERS as $address )
         {
+            $legacy = false;
             $l2_address = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/miner_' . $address . '_RewardAddress' );
             if( $l2_address === false )
+            {
                 $l2_address = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/miner' . $address . 'RewardAddress' );
+                $legacy = true;
+            }
             if( $l2_address !== false )
             {
                 $l2_address = jd( $l2_address );
                 $l2_address = reset( $l2_address );
+                if( $legacy )
+                    $l2_address = b2h( base64_decode( substr( $l2_address, 7 ) ) );
                 $map_addresses[$l2_address] = $address;
             }
         }
