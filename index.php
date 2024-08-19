@@ -1147,6 +1147,48 @@ if( $address === 'MINERS' )
     require_once 'include/RO.php';
     $RO = new RO;
 
+    $map_addresses_file = W8IO_DB_DIR . 'map_addresses.json';
+    $map_balances_file = W8IO_DB_DIR . 'map_balances.json';
+    if( file_exists( $map_addresses_file ) && time() - filemtime( $map_addresses_file ) < 300 )
+    {
+        $map_addresses = jd( file_get_contents( $map_addresses_file ) );
+        $map_balances = jd( file_get_contents( $map_balances_file ) );
+    }
+    else
+    {
+        $L1_API = \deemru\Fetcher::host( W8IO_L1_API );
+        $L1_BALANCES = $L1_API->fetch( '/api/data/' . W8IO_L1_BALANCES );
+        $L1_BALANCES = $L1_BALANCES === false ? [] : jd( $L1_BALANCES );
+        $L1_MINERS = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/allMiners' );
+        $L1_MINERS = $L1_MINERS === false ? false : jd( $L1_MINERS );
+        $L1_MINERS = $L1_MINERS['allMiners'] ?? '';
+        $L1_MINERS = explode( ',', $L1_MINERS );
+        
+        $map_balances = [];
+        foreach( $L1_BALANCES as $k => $v )
+        {
+            $address = substr( $k, 4 );
+            $balance = explode( '__', $v );
+            $balance = (int)( $balance[4] ?? 0 );
+            $map_balances[$address] = $balance;
+        }
+
+        $map_addresses = [];
+        foreach( $L1_MINERS as $address )
+        {
+            $l2_address = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/miner_' . $address . '_RewardAddress' );
+            if( $l2_address !== false )
+            {
+                $l2_address = jd( $l2_address );
+                $l2_address = reset( $l2_address );
+                $map_addresses[$l2_address] = $address;
+            }
+        }
+        
+        file_put_contents( $map_addresses_file, je( $map_addresses ) );
+        file_put_contents( $map_balances_file, je( $map_balances ) );
+    }
+
     $generators = $RO->getGeneratorsFees( $n, $arg );
 
     $Q = isset( $showtime ) ? 128 : 80;
@@ -1157,10 +1199,7 @@ if( $address === 'MINERS' )
 
     foreach( $generators as $generator => $pts )
     {
-        $balance = $RO->getBalanceByAddressId( $generator, true );
-        $balance = ( isset( $balance[0] ) ? $balance[0] : 0 ) + ( isset( $balance[WAVES_LEASE_ASSET] ) ? $balance[WAVES_LEASE_ASSET] : 0 );
-        //if( isset( $arg ) )
-            //$balance = $api->correct_balance( $generator, $arg, $arg > WAVES_LEASE_ASSET ? $balance : null );
+        $balance = $map_balances[$map_addresses[$generator] ?? 0] ?? 0;
         $gentotal += $balance;
 
         foreach( $pts as $height => $amount )
@@ -1228,7 +1267,7 @@ if( $address === 'MINERS' )
 
         $balance = $generator['balance'];
         $percent = str_pad( number_format( gmp_sign( $gentotal ) > 0 ? gmp_intval( gmp_div( gmp_mul( $balance, 100 ), $gentotal ) ) : 0, 2, '.', '' ) . '%', 7, ' ', STR_PAD_LEFT );
-        $balance = str_pad( number_format( gmp_intval( gmp_div( $balance, 1000000000000000000 ) ), 0, '', "'" ), 10, ' ', STR_PAD_LEFT );
+        $balance = str_pad( number_format( gmp_intval( gmp_div( $balance, W8IO_L1_BALANCE_DIV ) ), 0, '', "'" ), 10, ' ', STR_PAD_LEFT );
 
         $pts = $generator['pts'];
         $count = count( $pts );
@@ -1273,8 +1312,8 @@ if( $address === 'MINERS' )
     }
 
     $ntotal = str_pad( isset( $showtime ) ? $n : '', isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT );
-    $gentotal = str_pad( number_format( gmp_intval( gmp_div( $gentotal, 1000000000000000000 ) ), 0, '', "'" ), 79, ' ', STR_PAD_LEFT );
-    $feetotal = str_pad( number_format( gmp_intval( gmp_div( $feetotal, 1000000000000000000 ) ), 8, '.', '' ), ( isset( $showtime ) ? 48 : 0 ) + 104, ' ', STR_PAD_LEFT );
+    $gentotal = str_pad( number_format( gmp_intval( gmp_div( $gentotal, W8IO_L1_BALANCE_DIV ) ), 0, '', "'" ), 79, ' ', STR_PAD_LEFT );
+    $feetotal = w8io_amount( $feetotal, 18, 110 );
 
     echo "<small style=\"font-size: 50%;\"><br></small><b>$ntotal $gentotal $feetotal</b> ($blktotal)" .  PHP_EOL;
 
