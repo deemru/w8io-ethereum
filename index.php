@@ -1295,10 +1295,10 @@ if( $address === 'MINERS' )
         {
             $target = max( 0, $Q - 1 - (int)floor( ( $to - $block ) / $q ) );
             $matrix[$target]++;
-            $fee += $amount;
+            $fee = gmp_add( $fee, $amount );
         }
 
-        $feetotal += $fee;
+        $feetotal = gmp_add( $feetotal, $fee );
         $fee = w8io_amount( $fee, 18, 14 );
 
         $mxprint = '';
