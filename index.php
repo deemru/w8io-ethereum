@@ -1199,7 +1199,8 @@ if( $address === 'MINERS' )
 
     foreach( $generators as $generator => $pts )
     {
-        $balance = $map_balances[$map_addresses[$generator] ?? 0] ?? 0;
+        $address = $RO->getAddressById( $id );
+        $balance = $map_balances[$map_addresses[$address] ?? 0] ?? 0;
         $gentotal += $balance;
 
         foreach( $pts as $height => $amount )
