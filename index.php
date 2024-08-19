@@ -1149,7 +1149,7 @@ if( $address === 'MINERS' )
 
     $map_addresses_file = W8IO_DB_DIR . 'map_addresses.json';
     $map_balances_file = W8IO_DB_DIR . 'map_balances.json';
-    if( 0 && file_exists( $map_addresses_file ) && time() - filemtime( $map_addresses_file ) < 300 )
+    if( file_exists( $map_addresses_file ) && time() - filemtime( $map_addresses_file ) < 300 )
     {
         $map_addresses = jd( file_get_contents( $map_addresses_file ) );
         $map_balances = jd( file_get_contents( $map_balances_file ) );
@@ -1224,7 +1224,11 @@ if( $address === 'MINERS' )
 
     foreach( $map_addresses as $address => $l1_address )
         if( !isset( $infos[$address] ) )
-            $infos[$address] = [ 'balance' => $map_balances[$l1_address] ?? 0, 'pts' => [] ];
+        {
+            $balance = $map_balances[$l1_address] ?? 0;
+            $gentotal += $balance;
+            $infos[$address] = [ 'balance' => $balance, 'pts' => [] ];
+        }
 
     $fromtime = $RO->getTimestampByHeight( $from );
     $totime = $RO->getTimestampByHeight( $to );
