@@ -1269,7 +1269,25 @@ if( $address === 'MINERS' )
     }
 
     $generators = $infos;
-    uasort( $generators, function( $a, $b ){ return( $a['balance'] < $b['balance'] ? 1 : -1 ); } );
+    uasort( $generators, function( $a, $b )
+    {
+        $ab = $a['balance'];
+        $bb = $b['balance'];
+        if( $ab < $bb )
+            return 1;
+        if( $ab > $bb )
+            return -1;
+        //if( $ab === $bb )
+        {
+            $ab = count( $a['pts'] );
+            $bb = count( $b['pts'] );
+            if( $ab < $bb )
+                return 1;
+            if( $ab > $bb )
+                return -1;
+            return 0;
+        }
+    } );
 
     $n = 0;
     foreach( $generators as $address => $generator )
