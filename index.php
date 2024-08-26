@@ -1300,7 +1300,7 @@ if( $address === 'MINERS' )
         $alias .= str_pad( '', $padlen );
 
         $balance = $generator['balance'];
-        $percent = str_pad( number_format( gmp_sign( $gentotal ) > 0 ? gmp_intval( gmp_div( gmp_mul( $balance, 100 ), $gentotal ) ) : 0, 2, '.', '' ) . '%', 7, ' ', STR_PAD_LEFT );
+        $percent = str_pad( number_format( $gentotal > 0 ? ( 100 * $balance / $gentotal ) : 0, 2, '.', '' ) . '%', 7, ' ', STR_PAD_LEFT );
         $balance = str_pad( number_format( gmp_intval( gmp_div( $balance, W8IO_L1_BALANCE_DIV ) ), 0, '', "'" ), 10, ' ', STR_PAD_LEFT );
 
         $pts = $generator['pts'];
