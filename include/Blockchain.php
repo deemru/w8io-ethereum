@@ -453,9 +453,21 @@ class Blockchain
                     for( $j = 0; $j < $n; ++$j )
                     {
                         $tx = $txs[$j];
-                        $receipt = $receipts[$j];
-                        $trace = $traces[$j];
+                        $receipt = $receipts[$j] ?? false;
+                        $trace = $traces[$j] ?? false;
                         $hash = $hashes[$j];
+
+                        if( $receipt === false )
+                        {
+                            wk()->log( 'w', 'OFFLINE: no receipt at ' . $i . ' for tx ' . $j . '/' . $n );
+                            return W8IO_STATUS_OFFLINE;
+                        }
+
+                        if( $trace === false )
+                        {
+                            wk()->log( 'w', 'OFFLINE: no trace at ' . $i . ' for tx ' . $j . '/' . $n );
+                            return W8IO_STATUS_OFFLINE;
+                        }
 
                         if( $hash !== $tx['hash'] ||
                             $hash !== $trace['transactionHash'] ||
