@@ -1170,7 +1170,7 @@ if( $address === 'MINERS' )
             $L1_BALANCE_leased = $L1_API->fetch( '/api/balance/' . $address . '/-2' );
             $L1_BALANCE_normal = $L1_BALANCE_normal === false ? 0 : jd( $L1_BALANCE_normal );
             $L1_BALANCE_leased = $L1_BALANCE_leased === false ? 0 : jd( $L1_BALANCE_leased );
-            $map_balances[$address] = $L1_BALANCE_normal + $L1_BALANCE_leased;
+            $map_balances[$address] = intdiv( $L1_BALANCE_normal + $L1_BALANCE_leased, 100000000 );
         }
 
         $map_addresses = [];
