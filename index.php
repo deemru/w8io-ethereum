@@ -1149,7 +1149,7 @@ if( $address === 'MINERS' )
 
     $map_addresses_file = W8IO_DB_DIR . 'map_addresses.json';
     $map_balances_file = W8IO_DB_DIR . 'map_balances.json';
-    if( file_exists( $map_addresses_file ) && time() - filemtime( $map_addresses_file ) < 300 )
+    if( file_exists( $map_addresses_file ) && time() - filemtime( $map_addresses_file ) < 30 )
     {
         $map_addresses = jd( file_get_contents( $map_addresses_file ) );
         $map_balances = jd( file_get_contents( $map_balances_file ) );
@@ -1157,20 +1157,20 @@ if( $address === 'MINERS' )
     else
     {
         $L1_API = \deemru\Fetcher::host( W8IO_L1_API );
-        $L1_BALANCES = $L1_API->fetch( '/api/data/' . W8IO_L1_BALANCES );
-        $L1_BALANCES = $L1_BALANCES === false ? [] : jd( $L1_BALANCES );
+        
         $L1_MINERS = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/allMiners' );
         $L1_MINERS = $L1_MINERS === false ? false : jd( $L1_MINERS );
         $L1_MINERS = $L1_MINERS['allMiners'] ?? '';
         $L1_MINERS = explode( ',', $L1_MINERS );
         
         $map_balances = [];
-        foreach( $L1_BALANCES as $k => $v )
+        foreach( $L1_MINERS as $address )
         {
-            $address = substr( $k, 4 );
-            $balance = explode( '__', $v );
-            $balance = (int)( $balance[4] ?? 0 );
-            $map_balances[$address] = $balance;
+            $L1_BALANCE_normal = $L1_API->fetch( '/api/balance/' . $address . '/0' );
+            $L1_BALANCE_leased = $L1_API->fetch( '/api/balance/' . $address . '/-2' );
+            $L1_BALANCE_normal = $L1_BALANCE_normal === false ? 0 : jd( $L1_BALANCE_normal );
+            $L1_BALANCE_leased = $L1_BALANCE_leased === false ? 0 : jd( $L1_BALANCE_leased );
+            $map_balances[$address] = $L1_BALANCE_normal + $L1_BALANCE_leased;
         }
 
         $map_addresses = [];

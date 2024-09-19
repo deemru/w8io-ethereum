@@ -119,7 +119,7 @@ function b2h( string $data ) : string
     return '0x' . bin2hex( $data );
 }
 
-function jd( string $data ) : array|false
+function jd( string $data ) : array|int|false
 {
     $json = json_decode( $data, true, 512, JSON_BIGINT_AS_STRING );
     return $json === null ? false : $json;
