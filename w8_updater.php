@@ -219,7 +219,12 @@ switch( $argv[1] )
         $db = W8IO_MAIN_DB;
         $db_shm = "$db-shm";
         $db_wal = "$db-wal";
-        $files = [ $db, $db_shm, $db_wal,
+        $dbc = W8IO_CACHE_DB;
+        $dbc_shm = "$dbc-shm";
+        $dbc_wal = "$dbc-wal";
+        $files = [
+            $db, $db_shm, $db_wal,
+            $dbc, $dbc_shm, $dbc_wal,
             W8IO_DB_DIR . 'upstats.json',
             W8IO_DB_DIR . 'weights.txt',
             W8IO_DB_DIR . 'scams.txt',
