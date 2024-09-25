@@ -342,16 +342,18 @@ class Blockchain
             }
             else
             {
+                if( $this->lastTarget > $height )
+                {
+                    $block = $this->getBlock( $height, false );
+                    $hash = $block['hash'] ?? '...';
+                    wk()->log( 'w', 'height = ' . $height . ' (' . $hash . ')' );
+                }
                 $this->lastTarget = $height;
             }
         }
 
         if( $from >= $height )
-        {
-            if( $from !== $height )
-                wk()->log( 'w', 'height = ' . $height );
             return W8IO_STATUS_NORMAL;
-        }
 
         $cached = false;
         if( $from + W8IO_MAX_UPDATE_BATCH < $height )
