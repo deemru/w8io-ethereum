@@ -392,6 +392,7 @@ class Blockchain
             }
 
             wk()->log( 'w', 'fork @ ' . $i );
+            $cached = false;
             $i--;
         }
 
