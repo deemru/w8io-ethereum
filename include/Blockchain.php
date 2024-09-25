@@ -347,7 +347,11 @@ class Blockchain
         }
 
         if( $from >= $height )
+        {
+            if( $from !== $height )
+                wk()->log( 'w', 'height = ' . $height );
             return W8IO_STATUS_NORMAL;
+        }
 
         $cached = false;
         if( $from + W8IO_MAX_UPDATE_BATCH < $height )
