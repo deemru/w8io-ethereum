@@ -130,14 +130,17 @@ class Blockchain
         return intval( $json['result'], 16 );
     }
 
-    public function getBlock( $number ) : array|false
+    public function getBlock( $number, $cached = true ) : array|false
     {
-        $local = $this->kvBlocks->db->getUno( 0, $number );
-        if( $local !== false )
+        if( $cached )
         {
-            $local = jzd( $local[1] );
-            $local['cached'] = true;
-            return $local;
+            $local = $this->kvBlocks->db->getUno( 0, $number );
+            if( $local !== false )
+            {
+                $local = jzd( $local[1] );
+                $local['cached'] = true;
+                return $local;
+            }
         }
 
         $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",false],"id":1}' );
@@ -346,8 +349,12 @@ class Blockchain
         if( $from >= $height )
             return W8IO_STATUS_NORMAL;
 
+        $cached = false;
         if( $from + W8IO_MAX_UPDATE_BATCH < $height )
+        {
             $this->cacheFill( $from, W8IO_MAX_UPDATE_BATCH );
+            $cached = true;
+        }
 
         if( -1 === $from )
         {
@@ -359,7 +366,7 @@ class Blockchain
         else
         for( $i = $from + 1;; )
         {
-            $block = $this->getBlock( $i );
+            $block = $this->getBlock( $i, $cached );
             if( $block === false )
             {
                 wk()->log( 'w', 'OFFLINE: cannot get block' );
