@@ -343,11 +343,7 @@ class Blockchain
             else
             {
                 if( $this->lastTarget > $height )
-                {
-                    $block = $this->getBlock( $height, false );
-                    $hash = $block['hash'] ?? '...';
-                    wk()->log( 'w', 'height = ' . $height . ' (' . $hash . ')' );
-                }
+                    wk()->log( 'w', 'height = ' . $height );
                 $this->lastTarget = $height;
             }
         }
