@@ -36,8 +36,8 @@ define( 'W8IO_ASSET', 'Unit0' );
 define( 'W8IO_DECIMALS', 18 );
 define( 'W8IO_NODES', 'http://127.0.0.1:8545' );
 define( 'W8IO_L1_API', 'https://testnet.w8.io' );
-define( 'W8IO_L1_BALANCE_DIV', 1000 );
-define( 'W8IO_L1_BALANCES', '3NAXNTzo37xnaTPR2cKZ5EMkTXpKVdVQ59v' );
+define( 'W8IO_L1_ROOT', 'https://testnet.w8.io/' );
+define( 'W8IO_L1_BALANCE_DIV', 1 );
 define( 'W8IO_L1_CONTRACT', '3MsqKJ6o1ABE37676cHHBxJRs6huYTt72ch' );
 
 define( 'W8IO_DB_DIR', __DIR__ . '/var/db/' );

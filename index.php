@@ -1221,14 +1221,17 @@ if( $address === 'MINERS' )
 
         $infos[$address] = [ 'balance' => $balance, 'pts' => $pts ];
     }
-
     foreach( $map_addresses as $address => $l1_address )
+    {
         if( !isset( $infos[$address] ) )
         {
             $balance = $map_balances[$l1_address] ?? 0;
             $gentotal += $balance;
             $infos[$address] = [ 'balance' => $balance, 'pts' => [] ];
         }
+
+        $infos[$address]['l1_address'] = $l1_address;
+    }
 
     $fromtime = $RO->getTimestampByHeight( $from );
     $totime = $RO->getTimestampByHeight( $to );
@@ -1292,12 +1295,13 @@ if( $address === 'MINERS' )
     $n = 0;
     foreach( $generators as $address => $generator )
     {
-        $alias = false;
-        $padlen = max( 23 - strlen( $alias ), 0 );
+        $l1_address = $generator['l1_address'] ?? false;
+        if( $l1_address !== false )
+            $l1_address = '— <a href="' . W8IO_L1_ROOT . $l1_address . '">' . $l1_address . '</a>';
+        else
+            $l1_address = str_pad( '', 37 );
 
-        $address = '<a href="' . W8IO_ROOT . "$address\">$address</a>";
-        $alias = $alias === false ? ' ' : ' <a href="' . W8IO_ROOT . "$alias\">$alias</a>";
-        $alias .= str_pad( '', $padlen );
+        $address = '<a href="' . W8IO_ROOT . $address . '">' . $address . '</a>';
 
         $balance = $generator['balance'];
         $percent = str_pad( number_format( $gentotal > 0 ? ( 100 * $balance / $gentotal ) : 0, 2, '.', '' ) . '%', 7, ' ', STR_PAD_LEFT );
@@ -1342,11 +1346,11 @@ if( $address === 'MINERS' )
             continue;
         }
 
-        echo str_pad( ++$n, isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT ) . ") $address $alias $balance $percent  $mxprint $fee ($count)" . PHP_EOL;
+        echo str_pad( ++$n, isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT ) . ") $address $l1_address $balance $percent  $mxprint $fee ($count)" . PHP_EOL;
     }
 
     $ntotal = str_pad( isset( $showtime ) ? $n : '', isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT );
-    $gentotal = str_pad( number_format( gmp_intval( gmp_div( $gentotal, W8IO_L1_BALANCE_DIV ) ), 0, '', "'" ), 79, ' ', STR_PAD_LEFT );
+    $gentotal = str_pad( number_format( gmp_intval( gmp_div( $gentotal, W8IO_L1_BALANCE_DIV ) ), 0, '', "'" ), 92, ' ', STR_PAD_LEFT );
     $feetotal = w8io_amount( $feetotal, 18, 110 );
 
     echo "<small style=\"font-size: 50%;\"><br></small><b>$ntotal $gentotal $feetotal</b> ($blktotal)" .  PHP_EOL;

@@ -150,6 +150,16 @@ class Blockchain
         return $json['result'];
     }
 
+    public function getBlockByHash( $hash ) : array|false
+    {
+        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByHash","params":["' . $hash . '",false],"id":1}' );
+        $json = wk()->fetch( '/', true, '' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'];
+    }
+
     public function getBlockTraces( $number ) : array|false
     {
         $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"trace_replayBlockTransactions","params":["0x' . dechex( $number ) . '",["trace","stateDiff"]],"id":1}' );
@@ -329,7 +339,7 @@ class Blockchain
     {
         $entrance = microtime( true );
 
-        //$this->rollback( 1234700 );
+        $block = $this->getBlockByHash( '0x03248214930af877c1c138c85b73ce9459e57a832d2aeb1bd0b44da288f91729' );
 
         $from = $this->height;
         $height = $this->lastTarget ?? -1;
