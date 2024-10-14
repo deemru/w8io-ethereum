@@ -580,7 +580,7 @@ class BlockchainParser
                 $this->processTransferTransaction( $txkey, $tx ); break;
 
             default:
-                w8_err( 'unknown' );
+                w8_err( 'unknown type = ' . $type . ' (' . $tx['hash'] . ')' );
         }
 
         //$this->mts[$type] += microtime( true ) - $tt;
