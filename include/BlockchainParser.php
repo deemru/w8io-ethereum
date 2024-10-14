@@ -576,6 +576,7 @@ class BlockchainParser
         switch( $type )
         {
             case '0x0':
+            case '0x1':
             case '0x2':
                 $this->processTransferTransaction( $txkey, $tx ); break;
 
