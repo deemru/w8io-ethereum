@@ -281,7 +281,7 @@ function prolog()
     $L = (int)( $_COOKIE['L'] ?? 0 ) === 1;
     $title = 'w8 &#183; ' . prettyAddress( $address );
     if( $f !== false &&
-        ( $address !== 'MINERS' || $f !== '12960' ) &&
+        ( $address !== 'MINERS' || $f !== 12960 ) &&
         ( is_numeric( $f ) || strlen( $f ) >= 32 || $f === W8IO_ASSET ) )
         $title .= ' &#183; ' . prettyAddress( $f );
     echo sprintf( '
