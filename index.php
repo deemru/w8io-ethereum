@@ -242,7 +242,7 @@ if( $address === 'MINERS' )
     //$showtime = true;
 
     if( $f === false )
-        $f = 1472 * 4;
+        $f = 12960;
 
     $f = intval( $f );
     $n = min( max( $f, isset( $showtime ) ? 1 : 80 ), 100000 );
@@ -280,7 +280,9 @@ function prolog()
 
     $L = (int)( $_COOKIE['L'] ?? 0 ) === 1;
     $title = 'w8 &#183; ' . prettyAddress( $address );
-    if( $f !== false && ( is_numeric( $f ) || strlen( $f ) >= 32 || $f === W8IO_ASSET ) )
+    if( $f !== false &&
+        ( $address !== 'MINERS' || $f !== '12960' ) &&
+        ( is_numeric( $f ) || strlen( $f ) >= 32 || $f === W8IO_ASSET ) )
         $title .= ' &#183; ' . prettyAddress( $f );
     echo sprintf( '
 <!DOCTYPE html>
