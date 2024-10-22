@@ -91,7 +91,7 @@ const TYPE_STRINGS =
     TX_EXPRESSION => 'expression',
 ];
 
-const WAVES_ASSET = 0;
+const MAIN_ASSET = 0;
 const NO_ASSET = -1;
 const WAVES_LEASE_ASSET = -2;
 const SPONSOR_ASSET = -3;

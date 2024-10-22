@@ -23,7 +23,7 @@ function selftest( $start, $apikey )
     {
         if( $a === 0 )
         {
-            $assetId = 'WAVES';
+            $assetId = W8IO_ASSET;
         }
         else
         {
@@ -32,7 +32,7 @@ function selftest( $start, $apikey )
                 break;
         }
 
-        $aid = $assetId === 'WAVES' ? WAVES_ASSET : $RO->getIdByAsset( $assetId );
+        $aid = $assetId === W8IO_ASSET ? MAIN_ASSET : $RO->getIdByAsset( $assetId );
         $info = $RO->getAssetInfoById( $aid );
 
         $decimals = ord( $info[0] );
@@ -41,7 +41,7 @@ function selftest( $start, $apikey )
         $node_items = [];
         $after = '';
         $i = 0;
-        if( $a === WAVES_ASSET )
+        if( $a === MAIN_ASSET )
         {
             $data = wk()->fetch( '/debug/stateWaves/' . $height, false, null, null, [ "X-API-Key: $apikey" ] );
             $node_items = wk()->json_decode( $data );

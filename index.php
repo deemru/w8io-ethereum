@@ -1519,8 +1519,8 @@ else
                         $sep = strpos( $arg, ':' );
                         $asset1 = (int)substr( $arg, 1, $sep - 1 );
                         $asset2 = (int)substr( $arg, $sep + 1 );
-                        $asset1 = $asset1 === WAVES_ASSET ? 'WAVES' : $RO->getAssetById( $asset1 );
-                        $asset2 = $asset2 === WAVES_ASSET ? 'WAVES' : $RO->getAssetById( $asset2 );
+                        $asset1 = $asset1 === MAIN_ASSET ? W8IO_ASSET : $RO->getAssetById( $asset1 );
+                        $asset2 = $asset2 === MAIN_ASSET ? W8IO_ASSET : $RO->getAssetById( $asset2 );
                         $arg = ( $first === '>' ? '1_' : '2_' ) . $asset1 . '_' . $asset2;
                     }
                     else
@@ -1548,9 +1548,9 @@ else
                     if( !isset( $args[1] ) || !isset( $args[2] ) )
                         exit( 'not enough assets' );
 
-                    if( $args[1] === 'WAVES' )
+                    if( $args[1] === W8IO_ASSET )
                     {
-                        $asset1 = WAVES_ASSET;
+                        $asset1 = MAIN_ASSET;
                     }
                     else
                     {
@@ -1559,9 +1559,9 @@ else
                             exit( 'unknown asset1' );
                     }
 
-                    if( $args[2] === 'WAVES' )
+                    if( $args[2] === W8IO_ASSET )
                     {
-                        $asset2 = WAVES_ASSET;
+                        $asset2 = MAIN_ASSET;
                     }
                     else
                     {
@@ -1700,8 +1700,8 @@ else
             }
             else
             {
-                $weights[WAVES_ASSET] = 10000;
-                $prints[WAVES_ASSET] = [ 'asset' => $asset, 'amount' => $amount, 'furl' => $furl ];
+                $weights[MAIN_ASSET] = 10000;
+                $prints[MAIN_ASSET] = [ 'asset' => $asset, 'amount' => $amount, 'furl' => $furl ];
             }
         }
 

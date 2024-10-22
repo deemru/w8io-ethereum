@@ -235,14 +235,10 @@ class BlockchainBalances
         {
             foreach( $traces as $address => $balance )
             {
-                [ $uid, $update ] = $this->getUid( $address, WAVES_ASSET );
+                [ $uid, $update ] = $this->getUid( $address, MAIN_ASSET );
                 $balanceLocal = $this->amounts->getValueByKey( $uid );
                 $diff = gmp_sub( $balanceLocal, $balance );
-                $is2 = gmp_cmp( '2000000000000000000', $diff );
-                $is4 = gmp_cmp( '4000000000000000000', $diff );
-                $is6 = gmp_cmp( '6000000000000000000', $diff );
-                $is8 = gmp_cmp( '8000000000000000000', $diff );
-                if( gmp_sign( $diff ) !== 0 && $is2 !== 0 && $is4 !== 0 && $is6 !== 0 && $is8 !== 0 )
+                if( gmp_sign( $diff ) !== 0 )
                 {
                     require_once 'RO.php';
                     wk()->log( ( new RO )->getAddressById( $address ) );

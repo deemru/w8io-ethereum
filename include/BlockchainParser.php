@@ -272,7 +272,7 @@ class BlockchainParser
             TYPE =>     TX_MINER,
             A =>        MINER,
             B =>        $miner,
-            ASSET =>    WAVES_ASSET,
+            ASSET =>    gmp_sign( $this->workfees ) === 0 ? NO_ASSET : MAIN_ASSET,
             AMOUNT =>   $this->workfees,
             FEEASSET => NO_ASSET,
             FEE =>      0,
@@ -280,14 +280,16 @@ class BlockchainParser
             GROUP =>    0,
         ];
 
-        if( gmp_sign( $this->workburn ) !== 0 )
+        if( gmp_sign( $this->workburn ) === 0 )
+            return;
+
         $this->recs[] = [
             UID =>      $this->getNewUid(),
             TXKEY =>    $txkey,
             TYPE =>     TX_BURNER,
             A =>        $miner,
             B =>        BURNER,
-            ASSET =>    WAVES_ASSET,
+            ASSET =>    MAIN_ASSET,
             AMOUNT =>   $this->workburn,
             FEEASSET => NO_ASSET,
             FEE =>      0,
@@ -308,7 +310,7 @@ class BlockchainParser
             TYPE =>     TX_REWARD,
             A =>        $from,
             B =>        $this->getRecipientId( $tx['to'] ),
-            ASSET =>    WAVES_ASSET,
+            ASSET =>    MAIN_ASSET,
             AMOUNT =>   $tx['amount'],
             FEEASSET => NO_ASSET,
             FEE =>      0,
@@ -334,7 +336,7 @@ class BlockchainParser
             TYPE =>     TX_GENESIS,
             A =>        GENESIS,
             B =>        $this->getRecipientId( $tx['recipient'] ),
-            ASSET =>    WAVES_ASSET,
+            ASSET =>    MAIN_ASSET,
             AMOUNT =>   $tx['amount'],
             FEEASSET => NO_ASSET,
             FEE =>      0,
@@ -389,6 +391,17 @@ class BlockchainParser
         foreach( $tx['trace']['trace'] as $trace )
         {
             $action = $trace['action'];
+            if( $failed )
+            {
+                $amount = '0';
+                $asset = NO_ASSET;
+            }
+            else
+            {
+                $amount = gmp_init( $action['value'], 16 );
+                $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+            }
+
             switch( $trace['type'] )
             {
                 case 'call':
@@ -405,9 +418,9 @@ class BlockchainParser
                                     TYPE =>     TX_TRANSFER,
                                     A =>        $this->getSenderId( $action['from'] ),
                                     B =>        $to,
-                                    ASSET =>    WAVES_ASSET,
-                                    AMOUNT =>   $failed ? '0' : gmp_init( $action['value'], 16 ),
-                                    FEEASSET => WAVES_ASSET,
+                                    ASSET =>    $asset,
+                                    AMOUNT =>   $amount,
+                                    FEEASSET => MAIN_ASSET,
                                     FEE =>      $fee,
                                     ADDON =>    0,
                                     GROUP =>    $failed ? FAILED_GROUP : 0,
@@ -429,9 +442,9 @@ class BlockchainParser
                                     TYPE =>     TX_INVOKE,
                                     A =>        $this->getSenderId( $action['from'] ),
                                     B =>        $to,
-                                    ASSET =>    WAVES_ASSET,
-                                    AMOUNT =>   $failed ? '0' : gmp_init( $action['value'], 16 ),
-                                    FEEASSET => WAVES_ASSET,
+                                    ASSET =>    $asset,
+                                    AMOUNT =>   $amount,
+                                    FEEASSET => MAIN_ASSET,
                                     FEE =>      $fee,
                                     ADDON =>    0,
                                     GROUP =>    $group,
@@ -455,9 +468,9 @@ class BlockchainParser
                                 TYPE =>     TX_DELEGATE,
                                 A =>        $this->getSenderId( $action['from'] ),
                                 B =>        $contract,
-                                ASSET =>    WAVES_ASSET,
-                                AMOUNT =>   $failed ? '0' : gmp_init( $action['value'], 16 ),
-                                FEEASSET => WAVES_ASSET,
+                                ASSET =>    $asset,
+                                AMOUNT =>   $amount,
+                                FEEASSET => MAIN_ASSET,
                                 FEE =>      $fee,
                                 ADDON =>    0,
                                 GROUP =>    $group,
@@ -480,9 +493,9 @@ class BlockchainParser
                                 TYPE =>     TX_STATIC,
                                 A =>        $this->getSenderId( $action['from'] ),
                                 B =>        $contract,
-                                ASSET =>    WAVES_ASSET,
-                                AMOUNT =>   $failed ? '0' : gmp_init( $action['value'], 16 ),
-                                FEEASSET => WAVES_ASSET,
+                                ASSET =>    $asset,
+                                AMOUNT =>   $amount,
+                                FEEASSET => MAIN_ASSET,
                                 FEE =>      $fee,
                                 ADDON =>    0,
                                 GROUP =>    $group,
@@ -497,13 +510,11 @@ class BlockchainParser
                     if( $failed )
                     {
                         $B = MYSELF;
-                        $AMOUNT = '0';
                         $GROUP = FAILED_GROUP;
                     }
                     else
                     {
                         $B = $this->getRecipientId( $trace['result']['address'] );
-                        $AMOUNT = gmp_init( $action['value'], 16 );
                         $GROUP = 0;
 
                         $this->setContract( $B );
@@ -514,9 +525,9 @@ class BlockchainParser
                         TYPE =>     TX_SMART_ACCOUNT,
                         A =>        $this->getSenderId( $action['from'] ),
                         B =>        $B,
-                        ASSET =>    WAVES_ASSET,
-                        AMOUNT =>   $AMOUNT,
-                        FEEASSET => WAVES_ASSET,
+                        ASSET =>    $asset,
+                        AMOUNT =>   $amount,
+                        FEEASSET => MAIN_ASSET,
                         FEE =>      $fee,
                         ADDON =>    0,
                         GROUP =>    $GROUP,
