@@ -228,7 +228,7 @@ class Blockchain
     private function cacheFill( $from, $count )
     {
         if( !isset( $this->cacheClient ) )
-            $this->cacheClient = ( new \React\Http\Browser )->withTimeout( W8IO_RPC_API_TIMEOUT );
+            $this->cacheClient = ( new \React\Http\Browser )->withTimeout( W8IO_RPC_API_TIMEOUT )->withHeader( 'Connection', 'close' );
 
         $this->cacheTo = $from + $count;
         $this->cacheIterator = $from;
@@ -255,6 +255,15 @@ class Blockchain
 ]';
     }
 
+    private function simpleRequest( $number )
+    {
+        $hexnumber = dechex( $number );
+        return
+'[
+    {"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . $hexnumber . '",false],"id":0}
+]';
+    }
+
     private function cacheStep( $number = false )
     {
         if( $number === false )
@@ -270,61 +279,91 @@ class Blockchain
             }
         }
 
-        //wk()->log( $number );
-        //exit;
-
-        ( $this->cacheClient->post( wk()->getNodeAddress(), [], $this->traceRequest( $number ) ) )->then(
+        ( $this->cacheClient->post( wk()->getNodeAddress(), [], $this->simpleRequest( $number ) ) )->then(
             function ( \Psr\Http\Message\ResponseInterface $response ) use ( $number )
             {
                 $body = (string)$response->getBody();
                 $json = jd( $body );
 
                 $block = $json[0]['result'] ?? false;
-                $traces = $json[1]['result'] ?? false;
-                $receipts = $json[2]['result'] ?? false;
-
-                if( $block === false || $traces === false || $receipts === false )
+                if( $block === false )
                     w8_err( 'cacheStep( ' . $number . ' ): unexpected response' );
 
-                $i = $block['number'];
-                $blockHash = $block['hash'];
-                $baseFee = $block['baseFeePerGas'];
-                $txs = $block['transactions'];
-                $n = count( $txs );
+                $hashes = $block['transactions'];
+                $n = count( $hashes );
 
-                $hashes = [];
-                for( $j = 0; $j < $n; ++$j )
+                // SIMPLE
+                if( $n === 0 )
                 {
-                    $tx = $txs[$j];
-                    $receipt = $receipts[$j];
-                    $trace = $traces[$j];
+                    $this->cacheBlocks[] = [ $number, jze( $block ) ];
 
-                    $hash = $tx['hash'];
-                    $hashes[] = $hash;
-                    if( $hash !== $trace['transactionHash'] ||
-                        $hash !== $receipt['transactionHash'] ||
-                        $blockHash !== $receipt['blockHash'] ||
-                        $i !== $receipt['blockNumber'] ||
-                        $j !== intval( $receipt['transactionIndex'], 16 ) )
-                    {
-                        w8_err( 'cacheStep( ' . $number . ' ): unexpected correlations' );
-                    }
+                    if( count( $this->cacheBlocks ) >= 100 )
+                        $this->cacheSync();
 
-                    $tx['baseFee'] = $baseFee;
-                    $tx['receipt'] = $receipt;
-                    $tx['trace'] = $trace;
-
-                    $this->cacheTxs[] = [ h2b( $hash ), jze( $tx ) ];
+                    //wk()->log( 'cacheStep( ' . $number . ' ) +' . $n );
+                    return $this->cacheStep();
                 }
 
-                $block['transactions'] = $hashes;
-                $this->cacheBlocks[] = [ $number, jze( $block ) ];
+                // TRACE
+                ( $this->cacheClient->post( wk()->getNodeAddress(), [], $this->traceRequest( $number ) ) )->then(
+                    function ( \Psr\Http\Message\ResponseInterface $response ) use ( $number )
+                    {
+                        $body = (string)$response->getBody();
+                        $json = jd( $body );
 
-                if( count( $this->cacheBlocks ) >= 100 )
-                    $this->cacheSync();
+                        $block = $json[0]['result'] ?? false;
+                        $traces = $json[1]['result'] ?? false;
+                        $receipts = $json[2]['result'] ?? false;
 
-                //wk()->log( 'cacheStep( ' . $number . ' ) +' . $n );
-                $this->cacheStep();
+                        if( $block === false || $traces === false || $receipts === false )
+                            w8_err( 'cacheStep( ' . $number . ' ): unexpected response' );
+
+                        $i = $block['number'];
+                        $blockHash = $block['hash'];
+                        $baseFee = $block['baseFeePerGas'];
+                        $txs = $block['transactions'];
+                        $n = count( $txs );
+
+                        $hashes = [];
+                        for( $j = 0; $j < $n; ++$j )
+                        {
+                            $tx = $txs[$j];
+                            $receipt = $receipts[$j];
+                            $trace = $traces[$j];
+
+                            $hash = $tx['hash'];
+                            $hashes[] = $hash;
+                            if( $hash !== $trace['transactionHash'] ||
+                                $hash !== $receipt['transactionHash'] ||
+                                $blockHash !== $receipt['blockHash'] ||
+                                $i !== $receipt['blockNumber'] ||
+                                $j !== intval( $receipt['transactionIndex'], 16 ) )
+                            {
+                                w8_err( 'cacheStep( ' . $number . ' ): unexpected correlations' );
+                            }
+
+                            $tx['baseFee'] = $baseFee;
+                            $tx['receipt'] = $receipt;
+                            $tx['trace'] = $trace;
+
+                            $this->cacheTxs[] = [ h2b( $hash ), jze( $tx ) ];
+                        }
+
+                        $block['transactions'] = $hashes;
+                        $this->cacheBlocks[] = [ $number, jze( $block ) ];
+
+                        if( count( $this->cacheBlocks ) >= 100 )
+                            $this->cacheSync();
+
+                        //wk()->log( 'cacheStep( ' . $number . ' ) +' . $n );
+                        return $this->cacheStep();
+                    },
+                    function( \Exception $e ) use ( $number )
+                    {
+                        wk()->log( 'e', 'cacheStep( ' . $number . ' ): ' . $e->getCode() . ': ' . $e->getMessage() );
+                        $this->cacheRetry( W8IO_OFFLINE_DELAY, function() use ( $number ){ $this->cacheStep( $number ); } );
+                    }
+                );
             },
             function( \Exception $e ) use ( $number )
             {
