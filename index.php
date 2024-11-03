@@ -1149,12 +1149,10 @@ if( $address === 'MINERS' )
     require_once 'include/RO.php';
     $RO = new RO;
 
-    $map_addresses_file = W8IO_DB_DIR . 'map_addresses.json';
-    $map_balances_file = W8IO_DB_DIR . 'map_balances.json';
-    if( file_exists( $map_addresses_file ) && time() - filemtime( $map_addresses_file ) < 30 )
+    $cache_miners_file = W8IO_DB_DIR . 'cache_miners.json';
+    if( file_exists( $cache_miners_file ) && time() - filemtime( $cache_miners_file ) < 30 )
     {
-        $map_addresses = jd( file_get_contents( $map_addresses_file ) );
-        $map_balances = jd( file_get_contents( $map_balances_file ) );
+        [ $map_addresses, $map_balances, $map_aliases ] = jd( file_get_contents( $cache_miners_file ) );
     }
     else
     {
@@ -1176,6 +1174,7 @@ if( $address === 'MINERS' )
         }
 
         $map_addresses = [];
+        $map_aliases = [];
         foreach( $L1_MINERS as $address )
         {
             $legacy = false;
@@ -1192,11 +1191,17 @@ if( $address === 'MINERS' )
                 if( $legacy )
                     $l2_address = b2h( base64_decode( substr( $l2_address, 7 ) ) );
                 $map_addresses[$l2_address] = $address;
+                $alias = $L1_API->fetch( '/api/alias/' . $address );
+                if( $alias !== false )
+                {
+                    $alias = jd( $alias );
+                    if( $alias !== false )
+                        $map_aliases[$address] = $alias;
+                }
             }
         }
         
-        file_put_contents( $map_addresses_file, je( $map_addresses ) );
-        file_put_contents( $map_balances_file, je( $map_balances ) );
+        file_put_contents( $cache_miners_file, je( [ $map_addresses, $map_balances, $map_aliases ] ) );
     }
 
     $generators = $RO->getGeneratorsFees( $n, $arg );
@@ -1232,7 +1237,7 @@ if( $address === 'MINERS' )
             $infos[$address] = [ 'balance' => $balance, 'pts' => [] ];
         }
 
-        $infos[$address]['l1_address'] = $l1_address;
+        $infos[$address]['l1_address'] = $map_aliases[$l1_address] ?? $l1_address;
     }
 
     $fromtime = $RO->getTimestampByHeight( $from );
@@ -1299,7 +1304,7 @@ if( $address === 'MINERS' )
     {
         $l1_address = $generator['l1_address'] ?? false;
         if( $l1_address !== false )
-            $l1_address = '— <a href="' . W8IO_L1_ROOT . $l1_address . '">' . $l1_address . '</a>';
+            $l1_address = '— <a href="' . W8IO_L1_ROOT . $l1_address . '">' . $l1_address . '</a>' . str_repeat( ' ', 35 - strlen( $l1_address ) );
         else
             $l1_address = str_pad( '', 37 );
 
