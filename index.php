@@ -1156,7 +1156,7 @@ if( $address === 'MINERS' )
     }
     else
     {
-        $L1_API = \deemru\Fetcher::host( W8IO_L1_API );
+        $L1_API = wka();
         
         $L1_MINERS = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/allMiners' );
         $L1_MINERS = $L1_MINERS === false ? false : jd( $L1_MINERS );

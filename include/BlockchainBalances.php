@@ -240,9 +240,19 @@ class BlockchainBalances
                 $diff = gmp_sub( $balanceLocal, $balance );
                 if( gmp_sign( $diff ) !== 0 )
                 {
-                    require_once 'RO.php';
-                    wk()->log( ( new RO )->getAddressById( $address ) );
-                    wk()->log( $diff );
+                    static $minerReward;
+                    if( !isset( $minerReward ) )
+                    {
+                        $minerReward = (string)jd( wkn()->fetch( '/addresses/data/' . W8IO_L1_CONTRACT . '/minerReward' ) )['value'];
+                        $minerReward .= '000000000';
+                    }
+                    $mod = gmp_mod( $diff, $minerReward );
+                    if( gmp_sign( $mod ) !== 0 )
+                    {
+                        require_once 'RO.php';
+                        wk()->log( ( new RO )->getAddressById( $address ) );
+                        wk()->log( $diff );
+                    }
                 }
             }
         }

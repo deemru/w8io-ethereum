@@ -150,6 +150,15 @@ class Blockchain
         return $json['result'];
     }
 
+    public function getBlockFromOther( $number ) : array|false
+    {
+        $json = wkr()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",false],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'];
+    }
+
     public function getBlockByHash( $hash ) : array|false
     {
         $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByHash","params":["' . $hash . '",false],"id":1}' );
@@ -373,6 +382,24 @@ class Blockchain
         );
     }
 
+    public function advance( $hash, $finalized )
+    {
+        $json = wke()->fetch( '/', true, '{"jsonrpc":"2.0","method":"engine_forkchoiceUpdatedV1","params":[{"headBlockHash":"' . $hash . '","safeBlockHash":"' . $hash . '","finalizedBlockHash":"' . $finalized . '"},null],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return true;
+    }
+
+    public function syncing()
+    {
+        $json = wke()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'] === false ? 0 : 1;
+    }
+
     public function update( $block = null )
     {
         $entrance = microtime( true );
@@ -395,7 +422,52 @@ class Blockchain
         }
 
         if( $from >= $height )
-            return W8IO_STATUS_NORMAL;
+        {
+            $data = wkn()->fetch( '/addresses/data/' . W8IO_L1_CONTRACT, true, '{"keys":["chain_00000000","finalizedBlock"]}' );
+            if( $data === false || false === ( $data = jd( $data ) ) )
+            {
+                wk()->log( 'w', 'OFFLINE: cannot get chain data' );
+                return W8IO_STATUS_OFFLINE;
+            }
+            [ $height, $head ] = explode( ',', $data[0]['value'] );
+            $height = (int)$height;
+
+            if( $from >= $height )
+                return W8IO_STATUS_NORMAL;
+
+            if( $height - $from - W8IO_MAX_HISTORY_BATCH < 0 )
+            {
+                $finalized = $data[1]['value'];
+                $this->advance( '0x' . $head, '0x' . $finalized );
+            }
+            else
+            {
+                $target = $from + W8IO_MAX_HISTORY_BATCH;
+                $target = $this->getBlockFromOther( $target )['hash'] ?? false;
+                if( $target === false )
+                {
+                    wk()->log( 'w', 'OFFLINE: getBlockFromOther() bad response' );
+                    return W8IO_STATUS_OFFLINE;
+                }
+                $this->advance( $target, $target );
+            }
+
+            for( ;; )
+            {
+                $syncing = $this->syncing();
+                if( $syncing === false )
+                {
+                    wk()->log( 'w', 'OFFLINE: syncing bad response' );
+                    return W8IO_STATUS_OFFLINE;
+                }
+                if( $syncing === 0 )
+                    break;
+                usleep( 5000000 );
+                continue;
+            }
+
+            return W8IO_STATUS_UPDATED;
+        }
 
         $cached = false;
         if( W8IO_RPC_API_CONCURENCY > 1 && $from + W8IO_MAX_UPDATE_BATCH < $height )
