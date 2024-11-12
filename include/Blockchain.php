@@ -423,7 +423,7 @@ class Blockchain
 
         if( $from >= $height )
         {
-            if( W8IO_MAX_HISTORY_BATCH === 0 ) // do not use self advance
+            if( !defined( 'W8IO_LOCAL_ENGINE' ) ) // do not use self advance
                 return W8IO_STATUS_NORMAL;
 
             $data = wkn()->fetch( '/addresses/data/' . W8IO_L1_CONTRACT, true, '{"keys":["chain_00000000","finalizedBlock"]}' );
