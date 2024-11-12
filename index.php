@@ -1308,7 +1308,7 @@ if( $address === 'MINERS' )
         else
             $l1_address = str_pad( '', 37 );
 
-        $address = '<a href="' . W8IO_ROOT . $address . '">' . $address . '</a>';
+        $address = '<a href="' . W8IO_ROOT . $address . '">' . substr( $address, 0, 10 ) . '&#183;&#183;&#183;' . substr( $address, -10 ) . '</a>';
 
         $balance = $generator['balance'];
         $percent = str_pad( number_format( $gentotal > 0 ? ( 100 * $balance / $gentotal ) : 0, 2, '.', '' ) . '%', 7, ' ', STR_PAD_LEFT );
@@ -1357,7 +1357,7 @@ if( $address === 'MINERS' )
     }
 
     $ntotal = str_pad( isset( $showtime ) ? $n : '', isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT );
-    $gentotal = str_pad( number_format( gmp_intval( gmp_div( $gentotal, W8IO_L1_BALANCE_DIV ) ), 0, '', "'" ), 92, ' ', STR_PAD_LEFT );
+    $gentotal = str_pad( number_format( gmp_intval( gmp_div( $gentotal, W8IO_L1_BALANCE_DIV ) ), 0, '', "'" ), 73, ' ', STR_PAD_LEFT );
     $feetotal = w8io_amount( $feetotal, 18, 110 );
 
     echo "<small style=\"font-size: 50%;\"><br></small><b>$ntotal $gentotal $feetotal</b> ($blktotal)" .  PHP_EOL;
