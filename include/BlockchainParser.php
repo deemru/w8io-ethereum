@@ -391,24 +391,23 @@ class BlockchainParser
         foreach( $tx['trace']['trace'] as $trace )
         {
             $action = $trace['action'];
-            if( $failed )
-            {
-                $amount = '0';
-                $asset = NO_ASSET;
-            }
-            else
-            {
-                $amount = gmp_init( $action['value'], 16 );
-                $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
-            }
-
             switch( $trace['type'] )
             {
                 case 'call':
-                    $to = $this->getRecipientId( $action['to'] );
+                    if( $failed )
+                    {
+                        $amount = '0';
+                        $asset = NO_ASSET;
+                    }
+                    else
+                    {
+                        $amount = gmp_init( $action['value'], 16 );
+                        $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+                    }
                     switch( $action['callType'] )
                     {
                         case 'call':
+                            $to = $this->getRecipientId( $action['to'] );
                             $method = substr( $action['input'], 2, 8 );
                             if( $this->isContract( $to ) === false || $method === '' ) // just transfer
                             {
@@ -509,11 +508,17 @@ class BlockchainParser
                 case 'create':
                     if( $failed )
                     {
+                        $amount = '0';
+                        $asset = NO_ASSET;
+
                         $B = MYSELF;
                         $GROUP = FAILED_GROUP;
                     }
                     else
                     {
+                        $amount = gmp_init( $action['value'], 16 );
+                        $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+
                         $B = $this->getRecipientId( $trace['result']['address'] );
                         $GROUP = 0;
 
@@ -531,6 +536,32 @@ class BlockchainParser
                         FEE =>      $fee,
                         ADDON =>    0,
                         GROUP =>    $GROUP,
+                    ], $fee, $burn );
+                    break;
+
+                case 'suicide':
+                    if( $failed )
+                    {
+                        $amount = '0';
+                        $asset = NO_ASSET;
+                    }
+                    else
+                    {
+                        $amount = gmp_init( $action['balance'], 16 );
+                        $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+                    }
+                    $this->appendTS( [
+                        UID =>      $this->getNewUid(),
+                        TXKEY =>    $txkey,
+                        TYPE =>     TX_SUICIDE,
+                        A =>        $this->getSenderId( $action['address'] ),
+                        B =>        $this->getRecipientId( $action['refundAddress'] ),
+                        ASSET =>    $asset,
+                        AMOUNT =>   $amount,
+                        FEEASSET => MAIN_ASSET,
+                        FEE =>      $fee,
+                        ADDON =>    0,
+                        GROUP =>    $failed ? FAILED_GROUP : 0,
                     ], $fee, $burn );
                     break;
 

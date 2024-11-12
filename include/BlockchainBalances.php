@@ -197,6 +197,7 @@ class BlockchainBalances
             case TX_STATIC:
             case TX_BURNER:
             case TX_SMART_ACCOUNT:
+            case TX_SUICIDE:
                 if( $asset === $afee )
                     $procs_a = [ asset_out( $type ) => 1, $asset => gmp_neg( gmp_add( $amount, $fee ) ) ];
                 else

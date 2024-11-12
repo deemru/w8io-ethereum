@@ -35,11 +35,10 @@ const TX_MASS_TRANSFER = 11;
 const TX_DATA = 12;
 const TX_SMART_ACCOUNT = 13;
 const TX_SPONSORSHIP = 14;
-const TX_SMART_ASSET = 15;
+const TX_SUICIDE = 15;
 const TX_INVOKE = 16;
 const TX_DELEGATE = 17;
 const TX_STATIC = 18;
-const TX_EXPRESSION = 19;
 
 const TX_MINER = 0;
 const TX_BURNER = -1;
@@ -72,23 +71,13 @@ const TYPE_STRINGS =
     ITX_REISSUE => 'reissue',
     TX_BURN => 'burn',
     ITX_BURN => 'burn',
-    TX_EXCHANGE => 'exchange',
-    TX_LEASE => 'lease',
-    ITX_LEASE => 'lease',
-    TX_LEASE_CANCEL => 'unlease',
-    ITX_LEASE_CANCEL => 'unlease',
-    TX_ALIAS => 'alias',
-    TX_MASS_TRANSFER => 'mass',
     TX_DATA => 'data',
     TX_SMART_ACCOUNT => 'contract',
-    TX_SPONSORSHIP => 'sponsorship',
-    ITX_SPONSORSHIP => 'sponsorship',
-    TX_SMART_ASSET => 'smart asset',
     TX_INVOKE => 'invoke',
     ITX_INVOKE => 'invoke',
     TX_DELEGATE => 'delegate',
     TX_STATIC => 'static',
-    TX_EXPRESSION => 'expression',
+    TX_SUICIDE => 'suicide',
 ];
 
 const MAIN_ASSET = 0;
