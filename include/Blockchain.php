@@ -24,7 +24,7 @@ class Blockchain
     private $height;
     private $txheight;
     private $lastTarget;
-    private $q_getTxIdsFromTo;
+    private $mainChainId;
 
     public function __construct( $db )
     {
@@ -44,6 +44,9 @@ class Blockchain
         $this->setHeight();
         $this->setTxHeight();
         $this->lastUp = 0;
+        $this->mainChainId = wkn()->getData( "mainChainId", W8IO_L1_CONTRACT );
+        if( $this->mainChainId === false )
+            $this->mainChainId = 0;
     }
 
     private function ts2r( $key, $tx )
@@ -426,12 +429,21 @@ class Blockchain
             if( !defined( 'W8IO_LOCAL_ENGINE' ) ) // do not use self advance
                 return W8IO_STATUS_NORMAL;
 
-            $data = wkn()->fetch( '/addresses/data/' . W8IO_L1_CONTRACT, true, '{"keys":["chain_00000000","finalizedBlock"]}' );
+            $data = wkn()->fetch( '/addresses/data/' . W8IO_L1_CONTRACT, true, '{"keys":["chain_' . str_pad( strval( $this->mainChainId ), 8, '0', STR_PAD_LEFT ) . '","finalizedBlock","mainChainId"]}' );
             if( $data === false || false === ( $data = jd( $data ) ) )
             {
                 wk()->log( 'w', 'OFFLINE: cannot get chain data' );
                 return W8IO_STATUS_OFFLINE;
             }
+
+            $mainChainId = $data[2]['value'] ?? 0;
+            if( $mainChainId !== $this->mainChainId )
+            {
+                $this->mainChainId = $mainChainId;
+                wk()->log( 'w', 'SWITCHING to mainChainId = ' . $this->mainChainId );
+                return W8IO_STATUS_UPDATED;
+            }
+
             [ $height, $head ] = explode( ',', $data[0]['value'] );
             $height = (int)$height;
 
