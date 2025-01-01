@@ -457,7 +457,7 @@ class BlockchainParser
                             $methodInt = intval( $method, 16 );
                             $methodStr = sprintf( '%08x', $methodInt );
                             if( $methodStr !== $method )
-                                w8_err( 'unexpected' );
+                                w8_err( "unexpected: $methodStr !== $method ({$tx['hash']})" );
 
                             $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $contract, $method, TX_INVOKE );
 
