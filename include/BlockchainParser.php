@@ -431,7 +431,7 @@ class BlockchainParser
                                 $methodInt = intval( $method, 16 );
                                 $methodStr = sprintf( '%08x', $methodInt );
                                 if( $methodStr !== $method )
-                                    w8_err( 'unexpected' );
+                                    $method = 'fallback';
 
                                 $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $to, $method, TX_INVOKE );
 
@@ -457,7 +457,7 @@ class BlockchainParser
                             $methodInt = intval( $method, 16 );
                             $methodStr = sprintf( '%08x', $methodInt );
                             if( $methodStr !== $method )
-                                w8_err( "unexpected: $methodStr !== $method ({$tx['hash']})" );
+                                $method = 'fallback';
 
                             $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $contract, $method, TX_INVOKE );
 
@@ -482,7 +482,7 @@ class BlockchainParser
                             $methodInt = intval( $method, 16 );
                             $methodStr = sprintf( '%08x', $methodInt );
                             if( $methodStr !== $method )
-                                w8_err( 'unexpected' );
+                                $method = 'fallback';
 
                             $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $contract, $method, TX_INVOKE );
 
