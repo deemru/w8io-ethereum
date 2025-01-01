@@ -578,48 +578,6 @@ class RO
         return $r;
     }
 
-    private $getFunctionById;
-
-    public function getFunctionById( $id )
-    {
-        if( !isset( $this->getFunctionById ) )
-        {
-            $this->getFunctionById = $this->db->db->prepare( 'SELECT r1 FROM functions WHERE r0 = ?' );
-            if( $this->getFunctionById === false )
-                w8_err();
-        }
-
-        if( false === $this->getFunctionById->execute( [ $id ] ) )
-            w8_err();
-
-        $r = $this->getFunctionById->fetchAll();
-        if( isset( $r[0] ) )
-            return $r[0][0];
-
-        return false;
-    }
-
-    private $getFunctionByName;
-
-    public function getFunctionByName( $name )
-    {
-        if( !isset( $this->getFunctionByName ) )
-        {
-            $this->getFunctionByName = $this->db->db->prepare( 'SELECT r0 FROM functions WHERE r1 = ?' );
-            if( $this->getFunctionByName === false )
-                w8_err();
-        }
-
-        if( false === $this->getFunctionByName->execute( [ $name ] ) )
-            w8_err();
-
-        $r = $this->getFunctionByName->fetchAll();
-        if( isset( $r[0] ) )
-            return $r[0][0];
-
-        return false;
-    }
-
     private $getAssetById;
 
     public function getAssetById( $id )

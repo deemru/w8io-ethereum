@@ -723,9 +723,7 @@ function w8io_print_transactions( $aid, $where, $uid, $count, $address, $d, $sum
                 if( $group === false )
                     w8_err( "getGroupById( $groupId )" );
                 $method = explode( ':', $group )[1];
-                $addon = $RO->getFunctionById( $method );
-                if( $addon === false )
-                    $addon = $method;
+                $addon = $method;
 
                 $link = ' <a href="' . W8IO_ROOT . 'txs/g/' . $groupId . '">';
                 $linklen = strlen( $link ) + 3;
@@ -1532,7 +1530,7 @@ else
                     {
                         $args = explode( ':', $arg );
                         $dapp = $RO->getAddressById( $args[0] );
-                        $function = $RO->getFunctionById( $args[1] );
+                        $function = $args[1];
                         $arg = $dapp . '_' . $function . '_' . $args[2];
                     }
                 }
@@ -1588,10 +1586,6 @@ else
                         exit( 'bad type' );
 
                     $function = substr( $arg, strlen( $group ) + 1, -1 - strlen( $type ) );
-                    $function = $RO->getFunctionByName( $function );
-                    if( $function === false )
-                        exit( 'unknown function' );
-
                     $group = $dapp . ':' . $function . ':' . $type; // getGroupFunction
                 }
 
