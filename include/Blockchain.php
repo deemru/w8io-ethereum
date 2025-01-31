@@ -452,8 +452,12 @@ class Blockchain
 
             if( $height - $from - W8IO_MAX_HISTORY_BATCH < 0 )
             {
+                static $ttadvance = 0;
+                if( $entrance - $ttadvance < 0.5 )
+                    usleep( 5000000 );
                 $finalized = $data[1]['value'];
                 $this->advance( '0x' . $head, '0x' . $finalized );
+                $ttadvance = microtime( true );
             }
             else
             {
