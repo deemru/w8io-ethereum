@@ -1326,7 +1326,7 @@ if( $address === 'MINERS' )
         }
 
         $feetotal = gmp_add( $feetotal, $fee );
-        $fee = w8io_amount( $fee, 18, 14 );
+        $fee = str_pad( w8io_amount( $fee, 18, 14 ), 22, ' ', STR_PAD_LEFT );
 
         $mxprint = '';
         for( $i = 0; $i < $Q; $i++ )
@@ -1356,7 +1356,7 @@ if( $address === 'MINERS' )
 
     $ntotal = str_pad( isset( $showtime ) ? $n : '', isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT );
     $gentotal = str_pad( number_format( gmp_intval( gmp_div( $gentotal, W8IO_L1_BALANCE_DIV ) ), 0, '', "'" ), 73, ' ', STR_PAD_LEFT );
-    $feetotal = w8io_amount( $feetotal, 18, 110 );
+    $feetotal = w8io_amount( $feetotal, 18, 112 );
 
     echo "<small style=\"font-size: 50%;\"><br></small><b>$ntotal $gentotal $feetotal</b> ($blktotal)" .  PHP_EOL;
 
