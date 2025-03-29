@@ -370,6 +370,24 @@ class BlockchainParser
         return $qps;
     }
 
+    private function fillTraces( $call, &$traces )
+    {
+        $traces[] = $call;
+        if( isset( $call['calls'] ) )
+            foreach( $call['calls'] as $call )
+                $this->fillTraces( $call, $traces );
+    }
+
+    private function getMethod( $method )
+    {
+        $method = substr( $method, 2, 8 );
+        $methodInt = intval( $method, 16 );
+        $methodStr = sprintf( '%08x', $methodInt );
+        if( $methodStr === $method )
+            return $method;
+        return 'unknown';
+    }
+
     private function processTransferTransaction( $txkey, $tx )
     {
         //$from = $tx['from'];
@@ -388,185 +406,164 @@ class BlockchainParser
         if( $tx['gasPrice'] !== $tx['receipt']['effectiveGasPrice'] )
             w8_err( 'unexpected' );
 
-        foreach( $tx['trace']['trace'] as $trace )
+        $traces = [];
+        $this->fillTraces( $tx['trace'], $traces );
+
+        foreach( $traces as $trace  )
         {
-            $action = $trace['action'];
             switch( $trace['type'] )
             {
-                case 'call':
+                case 'CALL':
                     if( $failed )
                     {
+                        $to = $this->getRecipientId( $trace['to'] );
                         $amount = '0';
                         $asset = NO_ASSET;
+                        $group = FAILED_GROUP;
                     }
                     else
                     {
-                        $amount = gmp_init( $action['value'], 16 );
+                        $to = $this->getRecipientId( $trace['to'] );
+                        $amount = gmp_init( $trace['value'], 16 );
                         $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+                        $group = NO_GROUP;
                     }
-                    switch( $action['callType'] )
+
+                    if( $this->isContract( $to ) === false || $trace['input'] === '0x' ) // just transfer
                     {
-                        case 'call':
-                            $to = $this->getRecipientId( $action['to'] );
-                            $method = substr( $action['input'], 2, 8 );
-                            if( $this->isContract( $to ) === false || $method === '' ) // just transfer
-                            {
-                                $this->appendTS( [
-                                    UID =>      $this->getNewUid(),
-                                    TXKEY =>    $txkey,
-                                    TYPE =>     TX_TRANSFER,
-                                    A =>        $this->getSenderId( $action['from'] ),
-                                    B =>        $to,
-                                    ASSET =>    $asset,
-                                    AMOUNT =>   $amount,
-                                    FEEASSET => MAIN_ASSET,
-                                    FEE =>      $fee,
-                                    ADDON =>    0,
-                                    GROUP =>    $failed ? FAILED_GROUP : 0,
-                                ], $fee, $burn );
-                            }
-                            else // contract call
-                            {
-                                $method = substr( $action['input'], 2, 8 );
-                                $methodInt = intval( $method, 16 );
-                                $methodStr = sprintf( '%08x', $methodInt );
-                                if( $methodStr !== $method )
-                                    $method = 'fallback';
-
-                                $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $to, $method, TX_INVOKE );
-
-                                $this->appendTS( [
-                                    UID =>      $this->getNewUid(),
-                                    TXKEY =>    $txkey,
-                                    TYPE =>     TX_INVOKE,
-                                    A =>        $this->getSenderId( $action['from'] ),
-                                    B =>        $to,
-                                    ASSET =>    $asset,
-                                    AMOUNT =>   $amount,
-                                    FEEASSET => MAIN_ASSET,
-                                    FEE =>      $fee,
-                                    ADDON =>    0,
-                                    GROUP =>    $group,
-                                ], $fee, $burn );
-                            }
-                            break;
-
-                        case 'delegatecall':
-                            $method = substr( $action['input'], 2, 8 );
-                            $contract = $this->getRecipientId( $action['to'] );
-                            $methodInt = intval( $method, 16 );
-                            $methodStr = sprintf( '%08x', $methodInt );
-                            if( $methodStr !== $method )
-                                $method = 'fallback';
-
-                            $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $contract, $method, TX_INVOKE );
-
-                            $this->appendTS( [
-                                UID =>      $this->getNewUid(),
-                                TXKEY =>    $txkey,
-                                TYPE =>     TX_DELEGATE,
-                                A =>        $this->getSenderId( $action['from'] ),
-                                B =>        $contract,
-                                ASSET =>    $asset,
-                                AMOUNT =>   $amount,
-                                FEEASSET => MAIN_ASSET,
-                                FEE =>      $fee,
-                                ADDON =>    0,
-                                GROUP =>    $group,
-                            ], $fee, $burn );
-                            break;
-
-                        case 'staticcall':
-                            $method = substr( $action['input'], 2, 8 );
-                            $contract = $this->getRecipientId( $action['to'] );
-                            $methodInt = intval( $method, 16 );
-                            $methodStr = sprintf( '%08x', $methodInt );
-                            if( $methodStr !== $method )
-                                $method = 'fallback';
-
-                            $group = $failed ? FAILED_GROUP : $this->getGroupFunction( $contract, $method, TX_INVOKE );
-
-                            $this->appendTS( [
-                                UID =>      $this->getNewUid(),
-                                TXKEY =>    $txkey,
-                                TYPE =>     TX_STATIC,
-                                A =>        $this->getSenderId( $action['from'] ),
-                                B =>        $contract,
-                                ASSET =>    $asset,
-                                AMOUNT =>   $amount,
-                                FEEASSET => MAIN_ASSET,
-                                FEE =>      $fee,
-                                ADDON =>    0,
-                                GROUP =>    $group,
-                            ], $fee, $burn );
-                            break;
-                        default:
-                            w8_err( 'unknown callType = ' . $action['callType'] );
+                        $this->appendTS( [
+                            UID =>      $this->getNewUid(),
+                            TXKEY =>    $txkey,
+                            TYPE =>     TX_TRANSFER,
+                            A =>        $this->getSenderId( $trace['from'] ),
+                            B =>        $to,
+                            ASSET =>    $asset,
+                            AMOUNT =>   $amount,
+                            FEEASSET => MAIN_ASSET,
+                            FEE =>      $fee,
+                            ADDON =>    0,
+                            GROUP =>    $group,
+                        ], $fee, $burn );
+                        break;
                     }
+
+                    if( $failed === false )
+                        $group = $this->getGroupFunction( $to, $this->getMethod( $trace['input'] ), TX_INVOKE );
+
+                    $this->appendTS( [
+                        UID =>      $this->getNewUid(),
+                        TXKEY =>    $txkey,
+                        TYPE =>     TX_INVOKE,
+                        A =>        $this->getSenderId( $trace['from'] ),
+                        B =>        $to,
+                        ASSET =>    $asset,
+                        AMOUNT =>   $amount,
+                        FEEASSET => MAIN_ASSET,
+                        FEE =>      $fee,
+                        ADDON =>    0,
+                        GROUP =>    $group,
+                    ], $fee, $burn );
                     break;
 
-                case 'create':
+                case 'DELEGATECALL':
+                case 'STATICCALL':
                     if( $failed )
                     {
+                        $to = $this->getRecipientId( $trace['to'] );
                         $amount = '0';
                         $asset = NO_ASSET;
-
-                        $B = MYSELF;
-                        $GROUP = FAILED_GROUP;
+                        $group = FAILED_GROUP;
                     }
                     else
                     {
-                        $amount = gmp_init( $action['value'], 16 );
+                        $to = $this->getRecipientId( $trace['to'] );
+                        $amount = '0';
+                        $asset = NO_ASSET;
+                        $group = $this->getGroupFunction( $to, $this->getMethod( $trace['input'] ), TX_INVOKE );
+                    }
+
+                    $this->appendTS( [
+                        UID =>      $this->getNewUid(),
+                        TXKEY =>    $txkey,
+                        TYPE =>     $trace['type'] === 'STATICCALL' ? TX_STATIC : TX_DELEGATE,
+                        A =>        $this->getSenderId( $trace['from'] ),
+                        B =>        $to,
+                        ASSET =>    $asset,
+                        AMOUNT =>   $amount,
+                        FEEASSET => MAIN_ASSET,
+                        FEE =>      $fee,
+                        ADDON =>    0,
+                        GROUP =>    $group,
+                    ], $fee, $burn );
+                    break;
+
+                case 'CREATE':
+                case 'CREATE2':
+                    if( $failed )
+                    {
+                        $to = MYSELF;
+                        $amount = '0';
+                        $asset = NO_ASSET;
+                        $group = FAILED_GROUP;
+                    }
+                    else
+                    {
+                        $to = $this->getRecipientId( $trace['to'] );
+                        $amount = gmp_init( $trace['value'], 16 );
                         $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+                        $group = NO_GROUP;
 
-                        $B = $this->getRecipientId( $trace['result']['address'] );
-                        $GROUP = 0;
-
-                        $this->setContract( $B );
+                        $this->setContract( $to );
                     }
                     $this->appendTS( [
                         UID =>      $this->getNewUid(),
                         TXKEY =>    $txkey,
                         TYPE =>     TX_SMART_ACCOUNT,
-                        A =>        $this->getSenderId( $action['from'] ),
-                        B =>        $B,
+                        A =>        $this->getSenderId( $trace['from'] ),
+                        B =>        $to,
                         ASSET =>    $asset,
                         AMOUNT =>   $amount,
                         FEEASSET => MAIN_ASSET,
                         FEE =>      $fee,
                         ADDON =>    0,
-                        GROUP =>    $GROUP,
+                        GROUP =>    $group,
                     ], $fee, $burn );
                     break;
 
-                case 'suicide':
+                case 'SUICIDE':
+                case 'SELFDESTRUCT':
                     if( $failed )
                     {
+                        $to = $this->getRecipientId( $trace['to'] );
                         $amount = '0';
                         $asset = NO_ASSET;
+                        $group = FAILED_GROUP;
                     }
                     else
                     {
-                        $amount = gmp_init( $action['balance'], 16 );
+                        $to = $this->getRecipientId( $trace['to'] );
+                        $amount = gmp_init( $trace['value'], 16 );
                         $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+                        $group = NO_GROUP;
                     }
+
                     $this->appendTS( [
                         UID =>      $this->getNewUid(),
                         TXKEY =>    $txkey,
                         TYPE =>     TX_SUICIDE,
-                        A =>        $this->getSenderId( $action['address'] ),
-                        B =>        $this->getRecipientId( $action['refundAddress'] ),
+                        A =>        $this->getSenderId( $trace['from'] ),
+                        B =>        $to,
                         ASSET =>    $asset,
                         AMOUNT =>   $amount,
                         FEEASSET => MAIN_ASSET,
                         FEE =>      $fee,
                         ADDON =>    0,
-                        GROUP =>    $failed ? FAILED_GROUP : 0,
+                        GROUP =>    $group,
                     ], $fee, $burn );
                     break;
 
                 default:
-                    w8_err( 'unknown action type = ' . $trace['type'] );
+                    w8_err( 'unknown trace type = ' . $trace['type'] );
             }
 
             if( $failed )
@@ -576,10 +573,11 @@ class BlockchainParser
             $burn = 0;
         }
 
-        foreach( $tx['trace']['stateDiff'] as $address => $state )
+        if( 0 )
+        foreach( $tx['diff']['post'] as $address => $state )
         {
             $address = $this->getRecipientId( $address );
-            $balance = $state['balance']['*']['to'] ?? false;
+            $balance = $state['balance'] ?? false;
             if( $balance !== false )
                 $this->traces[$address] = $balance;
         }

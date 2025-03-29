@@ -85,6 +85,7 @@ const NO_ASSET = -1;
 const WAVES_LEASE_ASSET = -2;
 const SPONSOR_ASSET = -3;
 
+const NO_GROUP = 0;
 const FAILED_GROUP = -1;
 const ETHEREUM_TRANSFER_GROUP = -2;
 
@@ -97,10 +98,7 @@ function w8h2kg( $height ){ return w8h2k( $height + 1 ) - 1; }
 
 function h2b( string $hex ) : string
 {
-    $data = hex2bin( substr( $hex, 2 ) );
-    if( $data === false )
-        w8_err( 'failed: hex2bin()' );
-    return $data;
+    return hex2bin( substr( $hex, 2 ) );
 }
 
 function b2h( string $data ) : string

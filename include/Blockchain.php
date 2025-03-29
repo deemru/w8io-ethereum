@@ -25,6 +25,8 @@ class Blockchain
     private $txheight;
     private $lastTarget;
     private $mainChainId;
+    private $mainChainHeight;
+    private $syncingHeight;
 
     public function __construct( $db )
     {
@@ -47,6 +49,8 @@ class Blockchain
         $this->mainChainId = wkn()->getData( "mainChainId", W8IO_L1_CONTRACT );
         if( $this->mainChainId === false )
             $this->mainChainId = 0;
+        $this->mainChainHeight = 0;
+        $this->syncingHeight = 0;
     }
 
     private function ts2r( $key, $tx )
@@ -153,9 +157,18 @@ class Blockchain
         return $json['result'];
     }
 
-    public function getBlockFromOther( $number ) : array|false
+    public function getOtherBlockByNumber( $number ) : array|false
     {
-        $json = wkr()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",false],"id":1}' );
+        $json = wkr()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",true],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'];
+    }
+
+    public function getOtherBlockByHash( $hash ) : array|false
+    {
+        $json = wkr()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByHash","params":["' . $hash . '",true],"id":1}' );
         if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
             return false;
 
@@ -165,6 +178,15 @@ class Blockchain
     public function getBlockByHash( $hash ) : array|false
     {
         $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByHash","params":["' . $hash . '",false],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'];
+    }
+
+    public function getRawTransactionByHash( $hash ) : string|false
+    {
+        $json = wkr()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getRawTransactionByHash","params":["' . $hash . '"],"id":1}' );
         if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
             return false;
 
@@ -198,11 +220,12 @@ class Blockchain
         $block = $json[0]['result'] ?? false;
         $traces = $json[1]['result'] ?? false;
         $receipts = $json[2]['result'] ?? false;
+        $diffs = $json[3]['result'] ?? false;
 
         if( $block === false || $traces === false || $receipts === false )
             return false;
 
-        return [ $block, $traces, $receipts ];
+        return [ $block, $traces, $receipts, $diffs ];
     }
 
     private $cacheClient;
@@ -262,8 +285,9 @@ class Blockchain
         return
 '[
     {"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . $hexnumber . '",true],"id":0},
-    {"jsonrpc":"2.0","method":"trace_replayBlockTransactions","params":["0x' . $hexnumber . '",["trace","stateDiff"]],"id":1},
-    {"jsonrpc":"2.0","method":"eth_getBlockReceipts","params":["0x' . $hexnumber . '"],"id":2}
+    {"jsonrpc":"2.0","method":"debug_traceBlockByNumber","params":["0x' . $hexnumber . '",{"tracer":"callTracer"}],"id":1},
+    {"jsonrpc":"2.0","method":"eth_getBlockReceipts","params":["0x' . $hexnumber . '"],"id":2},
+    {"jsonrpc":"2.0","method":"debug_traceBlockByNumber","params":["0x' . $hexnumber . '",{"tracer":"prestateTracer","tracerConfig":{"diffMode":true}}],"id":3}
 ]';
     }
 
@@ -385,9 +409,61 @@ class Blockchain
         );
     }
 
+    private function base64UrlEncode( $data )
+    {
+        return rtrim( strtr( base64_encode( $data ), '+/', '-_'), '=' );
+    }
+
+    private function jwtheaders()
+    {
+        static $header = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9'; // $this->base64UrlEncode( json_encode( [ 'typ' => 'JWT', 'alg' => 'HS256' ] ) );
+        $payload = $this->base64UrlEncode( json_encode( [ 'iat' => time() ] ) );
+        $signature = $this->base64UrlEncode( hash_hmac( 'sha256', $header . '.' . $payload, W8IO_LOCAL_JWTSECRET, true ) );
+        return
+        [
+            'Authorization: Bearer ' . $header . '.' . $payload . '.' . $signature,
+            'Content-Type: application/json',
+            'Accept: application/json'
+        ];
+    }
+
+    public function followBlock( $block, $transactions, $finalized )
+    {
+        $payload =
+        [
+            'parentHash' => $block['parentHash'],
+            'feeRecipient' => $block['miner'],
+            'stateRoot' => $block['stateRoot'],
+            'receiptsRoot' => $block['receiptsRoot'],
+            'logsBloom' => $block['logsBloom'],
+            'prevRandao' => $block['mixHash'],
+            'blockNumber' => $block['number'],
+            'gasLimit' => $block['gasLimit'],
+            'gasUsed' => $block['gasUsed'],
+            'timestamp' => $block['timestamp'],
+            'extraData' => $block['extraData'],
+            'baseFeePerGas' => $block['baseFeePerGas'],
+            'blockHash' => $block['hash'],
+            'transactions' => $transactions,
+            'withdrawals' => $block['withdrawals'],
+            'blobGasUsed' => $block['blobGasUsed'],
+            'excessBlobGas' => $block['excessBlobGas'],
+        ];
+
+        $json = wke()->fetch( '/', true,
+        '[
+            {"jsonrpc":"2.0","method":"engine_newPayloadV3","params":[' . json_encode( $payload ) . ',[],"'.$block['parentBeaconBlockRoot'].'"],"id":1},
+            {"jsonrpc":"2.0","method":"engine_forkchoiceUpdatedV3","params":[{"headBlockHash":"' . $block['hash'] . '","safeBlockHash":"' . $finalized . '","finalizedBlockHash":"' . $finalized . '"},null],"id":2}
+        ]', null, $this->jwtheaders() );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json[0]['result'] ) || !isset( $json[1]['result'] ) )
+            return false;
+
+        return true;
+    }
+
     public function advance( $hash, $finalized )
     {
-        $json = wke()->fetch( '/', true, '{"jsonrpc":"2.0","method":"engine_forkchoiceUpdatedV1","params":[{"headBlockHash":"' . $hash . '","safeBlockHash":"' . $hash . '","finalizedBlockHash":"' . $finalized . '"},null],"id":1}' );
+        $json = wke()->fetch( '/', true, '{"jsonrpc":"2.0","method":"engine_forkchoiceUpdatedV3","params":[{"headBlockHash":"' . $hash . '","safeBlockHash":"' . $hash . '","finalizedBlockHash":"' . $finalized . '"},null],"id":1}', null, $this->jwtheaders() );
         if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
             return false;
 
@@ -396,11 +472,23 @@ class Blockchain
 
     public function syncing()
     {
-        $json = wke()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' );
+        $json = wke()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}', null, $this->jwtheaders() );
         if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
             return false;
 
-        return $json['result'] === false ? 0 : 1;
+        return $json['result'];
+    }
+
+    private function followChain( $block, $finalized )
+    {
+        $transactions = [];
+        foreach( $block['transactions'] as $tx )
+        {
+            if( !empty( $tx['accessList'] ) )
+                exit( 'accessList at ' . $block['hash'] );
+            $transactions[] = uk()->txRLP( $tx );
+        }
+        return $this->followBlock( $block, $transactions, $finalized );
     }
 
     public function update( $block = null )
@@ -413,7 +501,7 @@ class Blockchain
         {
             if( false === ( $height = $this->getHeight() ) )
             {
-                wk()->log( 'w', 'OFFLINE: cannot get last header' );
+                wk()->log( 'w', 'OFFLINE: cannot getHeight' );
                 return W8IO_STATUS_OFFLINE;
             }
             else
@@ -429,60 +517,76 @@ class Blockchain
             if( !defined( 'W8IO_LOCAL_ENGINE' ) ) // do not use self advance
                 return W8IO_STATUS_NORMAL;
 
-            $data = wkn()->fetch( '/addresses/data/' . W8IO_L1_CONTRACT, true, '{"keys":["chain_' . str_pad( strval( $this->mainChainId ), 8, '0', STR_PAD_LEFT ) . '","finalizedBlock","mainChainId"]}' );
-            if( $data === false || false === ( $data = jd( $data ) ) )
+            if( $this->mainChainHeight - $from - W8IO_MAX_HISTORY_BATCH < 0 )
             {
-                wk()->log( 'w', 'OFFLINE: cannot get chain data' );
-                return W8IO_STATUS_OFFLINE;
-            }
-
-            $mainChainId = $data[2]['value'] ?? 0;
-            if( $mainChainId !== $this->mainChainId )
-            {
-                $this->mainChainId = $mainChainId;
-                wk()->log( 'w', 'SWITCHING to mainChainId = ' . $this->mainChainId );
-                return W8IO_STATUS_UPDATED;
-            }
-
-            [ $height, $head ] = explode( ',', $data[0]['value'] );
-            $height = (int)$height;
-
-            if( $from >= $height )
-                return W8IO_STATUS_NORMAL;
-
-            if( $height - $from - W8IO_MAX_HISTORY_BATCH < 0 )
-            {
-                static $ttadvance = 0;
-                if( $entrance - $ttadvance < 0.5 )
-                    usleep( 5000000 );
-                $finalized = $data[1]['value'];
-                $this->advance( '0x' . $head, '0x' . $finalized );
-                $ttadvance = microtime( true );
-            }
-            else
-            {
-                $target = $from + W8IO_MAX_HISTORY_BATCH;
-                $target = $this->getBlockFromOther( $target )['hash'] ?? false;
-                if( $target === false )
+                $data = wkn()->fetch( '/addresses/data/' . W8IO_L1_CONTRACT, true, '{"keys":["chain_' . str_pad( strval( $this->mainChainId ), 8, '0', STR_PAD_LEFT ) . '","finalizedBlock","mainChainId"]}' );
+                if( $data === false || false === ( $data = jd( $data ) ) )
                 {
-                    wk()->log( 'w', 'OFFLINE: getBlockFromOther() bad response' );
+                    wk()->log( 'w', 'OFFLINE: cannot get chain data' );
                     return W8IO_STATUS_OFFLINE;
                 }
-                $this->advance( $target, $target );
+
+                $mainChainId = $data[2]['value'] ?? 0;
+                if( $mainChainId !== $this->mainChainId )
+                {
+                    $this->mainChainId = $mainChainId;
+                    wk()->log( 'w', 'SWITCHING to mainChainId = ' . $this->mainChainId );
+                    return W8IO_STATUS_UPDATED;
+                }
+
+                [ $height, $head ] = explode( ',', $data[0]['value'] );
+                $this->mainChainHeight = (int)$height;
+
+                if( $from >= $this->mainChainHeight )
+                    return W8IO_STATUS_NORMAL;
+            }
+
+            if( $this->mainChainHeight - $from - W8IO_MAX_HISTORY_BATCH < 0 )
+            {
+                $targetHeight = $this->mainChainHeight;
+                $targetBlock = $this->getOtherBlockByHash( '0x' . $head );
+                if( $targetBlock === false )
+                {
+                    wk()->log( 'w', 'OFFLINE: getOtherBlockByHash() bad response' );
+                    return W8IO_STATUS_OFFLINE;
+                }
+
+                $finalized = '0x' . $data[1]['value'];
+                $this->followChain( $targetBlock, $finalized );
+                $this->syncingHeight = $targetHeight;
+            }
+            else
+            if( $this->syncingHeight - $from - W8IO_MAX_UPDATE_BATCH < 0 )
+            {
+                $targetHeight = $from + W8IO_MAX_HISTORY_BATCH;
+                $targetBlock = $this->getOtherBlockByNumber( $targetHeight );
+                if( $targetBlock === false )
+                {
+                    wk()->log( 'w', 'OFFLINE: getOtherBlockByNumber() bad response' );
+                    return W8IO_STATUS_OFFLINE;
+                }
+
+                $finalized = $targetBlock['hash'];
+                $this->followChain( $targetBlock, $finalized );
+                $this->syncingHeight = $targetHeight;
             }
 
             for( ;; )
             {
-                $syncing = $this->syncing();
-                if( $syncing === false )
+                $height = $this->getHeight();
+                if( $height === false )
                 {
-                    wk()->log( 'w', 'OFFLINE: syncing bad response' );
+                    wk()->log( 'w', 'OFFLINE: syncing getHeight' );
                     return W8IO_STATUS_OFFLINE;
                 }
-                if( $syncing === 0 )
+                if( $height > $from )
                     break;
-                usleep( 5000000 );
-                continue;
+                if( microtime( true ) - $entrance > W8IO_OFFLINE_DELAY )
+                {
+                    $this->syncingHeight = 0;
+                    break;
+                }
+                usleep( 50000 );
             }
 
             return W8IO_STATUS_UPDATED;
@@ -513,7 +617,7 @@ class Blockchain
             }
             $blockHeight = $i;
 
-            $reference = $this->getMyUniqueAt( $i - 1 );            
+            $reference = $this->getMyUniqueAt( $i - 1 );
 
             // STABLE BLOCK
             if( $reference === $block['parentHash'] )
@@ -593,7 +697,7 @@ class Blockchain
                         wk()->log( 'w', 'OFFLINE: cannot get block trace' );
                         return W8IO_STATUS_OFFLINE;
                     }
-                    [ $block, $traces, $receipts ] = $result;
+                    [ $block, $traces, $receipts, $diffs ] = $result;
                     $txs = $block['transactions'];
                     $baseFee = $block['baseFeePerGas'];
 
@@ -603,6 +707,7 @@ class Blockchain
                         $receipt = $receipts[$j] ?? false;
                         $trace = $traces[$j] ?? false;
                         $hash = $hashes[$j];
+                        $diff = $diffs[$j];
 
                         if( $receipt === false )
                         {
@@ -616,8 +721,15 @@ class Blockchain
                             return W8IO_STATUS_OFFLINE;
                         }
 
+                        if( $diff === false )
+                        {
+                            wk()->log( 'w', 'OFFLINE: no diff at ' . $i . ' for tx ' . $j . '/' . $n );
+                            return W8IO_STATUS_OFFLINE;
+                        }
+
                         if( $hash !== $tx['hash'] ||
-                            $hash !== $trace['transactionHash'] ||
+                            $hash !== $trace['txHash'] ||
+                            $hash !== $diff['txHash'] ||
                             $hash !== $receipt['transactionHash'] ||
                             $blockHash !== $receipt['blockHash'] )
                         {
@@ -627,7 +739,8 @@ class Blockchain
 
                         $tx['baseFee'] = $baseFee;
                         $tx['receipt'] = $receipt;
-                        $tx['trace'] = $trace;
+                        $tx['trace'] = $trace['result'];
+                        $tx['diff'] = $diff['result'];
 
                         $newTxs[$key++] = $tx;
                         $cacheTxs[] = [ h2b( $hash ), jze( $tx ) ];

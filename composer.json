@@ -5,6 +5,7 @@
         "deemru/triples": "^1.0",
         "phpmailer/phpmailer": "^6.2",
         "react/http": "^1.10",
-        "deemru/fetcher": "^1.0"
+        "deemru/fetcher": "^1.0",
+        "deemru/unitskit": "^1.0"
     }
 }

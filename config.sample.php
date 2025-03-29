@@ -81,6 +81,7 @@ define( 'W8IO_CRYPTASH', 'SECRET_STRING_SET_YOURS_HERE' );
 
 define( 'W8IO_LOCAL_RPC', 'http://127.0.0.1:8545' );
 define( 'W8IO_LOCAL_ENGINE', 'http://127.0.0.1:8551' );
+define( 'W8IO_LOCAL_JWTSECRET', hex2bin( '0000000000000000000000000000000000000000000000000000000000000000' ) );
 define( 'W8IO_WAVES_NODE', 'https://nodes-testnet.wavesnodes.com' );
 define( 'W8IO_OTHER_RPC', 'https://unit0-testnet.w8.io' );
 define( 'W8IO_L1_API', 'https://testnet.w8.io' );
