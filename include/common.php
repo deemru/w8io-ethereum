@@ -22,7 +22,7 @@ const REWARDER = -4;
 const MASS = -5;
 
 const TX_GENESIS = 1;
-const TX_PAYMENT = 2;
+const TX_DEPOSIT = 2;
 const TX_ISSUE = 3;
 const TX_TRANSFER = 4;
 const TX_REISSUE = 5;
@@ -62,7 +62,7 @@ const TYPE_STRINGS =
     TX_REWARD => 'reward',
 
     TX_GENESIS => 'genesis',
-    TX_PAYMENT => 'payment',
+    TX_DEPOSIT => 'deposit',
     TX_ISSUE => 'issue',
     ITX_ISSUE => 'issue',
     TX_TRANSFER => 'transfer',
