@@ -192,6 +192,7 @@ class BlockchainBalances
             case TX_MINER:
             case TX_REWARD:
             case TX_TRANSFER:
+            case TX_DEPOSIT:
             case TX_INVOKE:
             case TX_DELEGATE:
             case TX_STATIC:

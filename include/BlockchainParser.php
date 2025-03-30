@@ -388,29 +388,22 @@ class BlockchainParser
         return 'unknown';
     }
 
-    private function processTransferTransaction( $txkey, $tx )
+    private function processEthereumTransaction( $txkey, $tx, $deposit )
     {
-        //$from = $tx['from'];
-        //if( $from === '0x82300028faf9f80c6c7fbc7c832a5f41e9779e33' )
-            //wk()->log( $from );
-        $gasUsed = $tx['receipt']['gasUsed'];
-        $fee = gmp_mul( $tx['gasPrice'], $gasUsed );
-        $burn = gmp_mul( $tx['baseFee'], $gasUsed );
-
-        if( $tx['receipt']['status'] !== '0x1' )
-        if( $tx['receipt']['status'] !== '0x0' )
-            w8_err( 'unexpected' );
-
+        $receipt = $tx['receipt'];
         $failed = $tx['receipt']['status'] !== '0x1';
 
-        if( $tx['gasPrice'] !== $tx['receipt']['effectiveGasPrice'] )
-            w8_err( 'unexpected' );
+        $gasUsed = $receipt['gasUsed'];
+        $fee = gmp_mul( $receipt['effectiveGasPrice'], $gasUsed );
+        $burn = gmp_mul( $tx['baseFee'], $gasUsed );
 
         $traces = [];
         $this->fillTraces( $tx['trace'], $traces );
-
         foreach( $traces as $trace  )
         {
+            if( $deposit && $trace['type'] !== 'CALL' )
+                w8_err( 'unexpected deposit trace type = ' . $trace['type'] . ' (' . $tx['hash'] . ')' );
+
             switch( $trace['type'] )
             {
                 case 'CALL':
@@ -431,6 +424,9 @@ class BlockchainParser
 
                     if( $this->isContract( $to ) === false || $trace['input'] === '0x' ) // just transfer
                     {
+                        if( $deposit )
+                            w8_err( 'unexpected transfer while deposit (' . $tx['hash'] . ')' );
+
                         $this->appendTS( [
                             UID =>      $this->getNewUid(),
                             TXKEY =>    $txkey,
@@ -447,13 +443,23 @@ class BlockchainParser
                         break;
                     }
 
+                    if( $deposit )
+                    {
+                        $type = TX_DEPOSIT;
+                        $deposit = false;
+                    }
+                    else
+                    {
+                        $type = TX_INVOKE;
+                    }
+
                     if( $failed === false )
-                        $group = $this->getGroupFunction( $to, $this->getMethod( $trace['input'] ), TX_INVOKE );
+                        $group = $this->getGroupFunction( $to, $this->getMethod( $trace['input'] ), $type );
 
                     $this->appendTS( [
                         UID =>      $this->getNewUid(),
                         TXKEY =>    $txkey,
-                        TYPE =>     TX_INVOKE,
+                        TYPE =>     $type,
                         A =>        $this->getSenderId( $trace['from'] ),
                         B =>        $to,
                         ASSET =>    $asset,
@@ -573,7 +579,7 @@ class BlockchainParser
             $burn = 0;
         }
 
-        if( 0 )
+        if( 10 )
         foreach( $tx['diff']['post'] as $address => $state )
         {
             $address = $this->getRecipientId( $address );
@@ -618,7 +624,12 @@ class BlockchainParser
             case '0x0':
             case '0x1':
             case '0x2':
-                $this->processTransferTransaction( $txkey, $tx ); break;
+                $this->processEthereumTransaction( $txkey, $tx, false );
+                break;
+
+            case '0x7e':
+                $this->processEthereumTransaction( $txkey, $tx, true );
+                break;
 
             default:
                 w8_err( 'unknown type = ' . $type . ' (' . $tx['hash'] . ')' );
