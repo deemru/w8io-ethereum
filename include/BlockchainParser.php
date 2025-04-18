@@ -266,14 +266,25 @@ class BlockchainParser
 
         $miner = $this->getRecipientId( $block['miner'] );
 
+        if( gmp_sign( $this->workfees ) === 0 )
+        {
+            $asset = NO_ASSET;
+            $amount = 0;
+        }
+        else
+        {
+            $asset = MAIN_ASSET;
+            $amount = $this->workfees;
+        }
+
         $this->recs[] = [
             UID =>      $this->getNewUid(),
             TXKEY =>    $txkey,
             TYPE =>     TX_MINER,
             A =>        MINER,
             B =>        $miner,
-            ASSET =>    gmp_sign( $this->workfees ) === 0 ? NO_ASSET : MAIN_ASSET,
-            AMOUNT =>   $this->workfees,
+            ASSET =>    $asset,
+            AMOUNT =>   $amount,
             FEEASSET => NO_ASSET,
             FEE =>      0,
             ADDON =>    0,
@@ -303,13 +314,15 @@ class BlockchainParser
         $from = $tx['from'];
         if( $from !== REWARDER )
             $from = $this->getSenderId( $from );
+        $to = $this->getRecipientId( $tx['to'] );
+        $amount = $tx['amount'];
 
         $this->recs[] = [
             UID =>      $this->getNewUid(),
             TXKEY =>    $txkey,
             TYPE =>     TX_REWARD,
             A =>        $from,
-            B =>        $this->getRecipientId( $tx['to'] ),
+            B =>        $to,
             ASSET =>    MAIN_ASSET,
             AMOUNT =>   $tx['amount'],
             FEEASSET => NO_ASSET,
@@ -317,15 +330,9 @@ class BlockchainParser
             ADDON =>    0,
             GROUP =>    0,
         ];
-    }
 
-    private function processFailedTransaction( $txkey, $tx )
-    {
-        switch( $tx['type'] )
-        {
-            default:
-                w8_err( 'processFailedTransaction unknown type: ' . $tx['type'] );
-        }
+        if( $this->debug && isset( $this->debugTraces[$to] ) )
+            $this->debugTraces[$to] = gmp_add( $amount, $this->debugTraces[$to] );
     }
 
     private function processGenesisTransaction( $txkey, $tx )
@@ -343,31 +350,6 @@ class BlockchainParser
             ADDON =>    0,
             GROUP =>    0,
         ], 0, 0 );
-    }
-
-    private function getQPrice( $asset )
-    {
-        if( $asset === 0 )
-            $qp = 1;
-        else
-        switch( $this->kvAssetInfo->getValueByKey( $asset )[0] )
-        {
-            case 'N':
-            case '0': $qp = 100000000; break;
-            case '1': $qp = 10000000; break;
-            case '2': $qp = 1000000; break;
-            case '3': $qp = 100000; break;
-            case '4': $qp = 10000; break;
-            case '5': $qp = 1000; break;
-            case '6': $qp = 100; break;
-            case '7': $qp = 10; break;
-            case '8': $qp = 1; break;
-            default:
-                w8_err();
-        }
-        $qps = [ 100000000 * $qp, $qp ];
-        $this->qps[$asset] = $qps;
-        return $qps;
     }
 
     private function fillTraces( $call, &$traces )
@@ -399,8 +381,15 @@ class BlockchainParser
 
         $traces = [];
         $this->fillTraces( $tx['trace'], $traces );
-        foreach( $traces as $trace  )
+        foreach( $traces as $trace )
         {
+            if( isset( $trace['error'] ) && $failed === false )
+            {
+                if( $fee !== 0 )
+                    w8_err( 'unexpected trace error (' . $tx['hash'] . ')' );
+                continue;
+            }
+
             if( $deposit && $trace['type'] !== 'CALL' )
                 w8_err( 'unexpected deposit trace type = ' . $trace['type'] . ' (' . $tx['hash'] . ')' );
 
@@ -410,7 +399,7 @@ class BlockchainParser
                     if( $failed )
                     {
                         $to = $this->getRecipientId( $trace['to'] );
-                        $amount = '0';
+                        $amount = 0;
                         $asset = NO_ASSET;
                         $group = FAILED_GROUP;
                     }
@@ -418,7 +407,13 @@ class BlockchainParser
                     {
                         $to = $this->getRecipientId( $trace['to'] );
                         $amount = gmp_init( $trace['value'], 16 );
-                        $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+                        if( gmp_sign( $amount ) === 0 )
+                        {
+                            $asset = NO_ASSET;
+                            $amount = 0;
+                        }
+                        else
+                            $asset = MAIN_ASSET;
                         $group = NO_GROUP;
                     }
 
@@ -476,14 +471,14 @@ class BlockchainParser
                     if( $failed )
                     {
                         $to = $this->getRecipientId( $trace['to'] );
-                        $amount = '0';
+                        $amount = 0;
                         $asset = NO_ASSET;
                         $group = FAILED_GROUP;
                     }
                     else
                     {
                         $to = $this->getRecipientId( $trace['to'] );
-                        $amount = '0';
+                        $amount = 0;
                         $asset = NO_ASSET;
                         $group = $this->getGroupFunction( $to, $this->getMethod( $trace['input'] ), TX_INVOKE );
                     }
@@ -508,7 +503,7 @@ class BlockchainParser
                     if( $failed )
                     {
                         $to = MYSELF;
-                        $amount = '0';
+                        $amount = 0;
                         $asset = NO_ASSET;
                         $group = FAILED_GROUP;
                     }
@@ -516,7 +511,13 @@ class BlockchainParser
                     {
                         $to = $this->getRecipientId( $trace['to'] );
                         $amount = gmp_init( $trace['value'], 16 );
-                        $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+                        if( gmp_sign( $amount ) === 0 )
+                        {
+                            $asset = NO_ASSET;
+                            $amount = 0;
+                        }
+                        else
+                            $asset = MAIN_ASSET;
                         $group = NO_GROUP;
 
                         $this->setContract( $to );
@@ -541,7 +542,7 @@ class BlockchainParser
                     if( $failed )
                     {
                         $to = $this->getRecipientId( $trace['to'] );
-                        $amount = '0';
+                        $amount = 0;
                         $asset = NO_ASSET;
                         $group = FAILED_GROUP;
                     }
@@ -549,7 +550,13 @@ class BlockchainParser
                     {
                         $to = $this->getRecipientId( $trace['to'] );
                         $amount = gmp_init( $trace['value'], 16 );
-                        $asset = gmp_sign( $amount ) === 0 ? NO_ASSET : MAIN_ASSET;
+                        if( gmp_sign( $amount ) === 0 )
+                        {
+                            $asset = NO_ASSET;
+                            $amount = 0;
+                        }
+                        else
+                            $asset = MAIN_ASSET;
                         $group = NO_GROUP;
                     }
 
@@ -579,13 +586,15 @@ class BlockchainParser
             $burn = 0;
         }
 
-        if( 10 )
-        foreach( $tx['diff']['post'] as $address => $state )
+        if( $this->debug )
         {
-            $address = $this->getRecipientId( $address );
-            $balance = $state['balance'] ?? false;
-            if( $balance !== false )
-                $this->traces[$address] = $balance;
+            foreach( $tx['diff']['post'] as $address => $state )
+            {
+                $address = $this->getRecipientId( $address );
+                $balance = $state['balance'] ?? false;
+                if( $balance !== false )
+                    $this->debugTraces[$address] = $balance;
+            }
         }
     }
 
@@ -611,16 +620,12 @@ class BlockchainParser
             $this->workburn = gmp_init( 0 );
         }
 
-        $type = $tx['type'];
-        if( $type === TX_MINER )
-            return $this->processGeneratorTransaction( $txkey, $tx );
-        if( $type === TX_GENESIS )
-            return $this->processGenesisTransaction( $txkey, $tx );
-
-        //$tt = microtime( true );
-
-        switch( $type )
+        switch( $tx['type'] )
         {
+            case TX_MINER:
+                return $this->processGeneratorTransaction( $txkey, $tx );
+            case TX_GENESIS:
+                return $this->processGenesisTransaction( $txkey, $tx );
             case '0x0':
             case '0x1':
             case '0x2':
@@ -632,10 +637,8 @@ class BlockchainParser
                 break;
 
             default:
-                w8_err( 'unknown type = ' . $type . ' (' . $tx['hash'] . ')' );
+                w8_err( 'unknown type = ' . $tx['type'] . ' (' . $tx['hash'] . ')' );
         }
-
-        //$this->mts[$type] += microtime( true ) - $tt;
     }
 
     private function flush()
@@ -643,7 +646,7 @@ class BlockchainParser
         if( count( $this->recs ) )
         {
             $this->pts->merge( $this->recs );
-            $this->balances->update( $this->recs, false, $this->traces );
+            $this->balances->update( $this->recs, false, $this->debugTraces );
             $this->recs = [];
 
             if( count( $this->datarecs ) )
@@ -674,11 +677,14 @@ class BlockchainParser
         $this->workheight = -1;
     }
 
-    private $traces;
+    private $debug = true;
+    private $debugTraces;
 
     public function update( $txs )
     {
-        $this->traces = [];
+        if( $this->debug )
+            $this->debugTraces = [];
+
         // if global start not begin from FULL pts per block
         // append current PTS to track block fee
         foreach( $txs as $txkey => $tx )

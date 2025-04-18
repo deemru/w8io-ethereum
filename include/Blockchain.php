@@ -222,7 +222,7 @@ class Blockchain
         $receipts = $json[2]['result'] ?? false;
         $diffs = $json[3]['result'] ?? false;
 
-        if( $block === false || $traces === false || $receipts === false )
+        if( $block === false || $traces === false || $receipts === false || $diffs === false )
             return false;
 
         return [ $block, $traces, $receipts, $diffs ];
@@ -509,6 +509,14 @@ class Blockchain
                 if( $this->lastTarget > $height )
                     wk()->log( 'w', 'height = ' . $height );
                 $this->lastTarget = $height;
+
+                static $checkOnce = true;
+                if( $checkOnce && $height > W8IO_MAX_HISTORY_BATCH )
+                {
+                    if( false === $this->getBlockTrace( $height - W8IO_MAX_HISTORY_BATCH ) )
+                        w8_err( 'getBlockTrace past W8IO_MAX_HISTORY_BATCH' );
+                    $checkOnce = false;
+                }
             }
         }
 
@@ -593,10 +601,11 @@ class Blockchain
         }
 
         $cached = false;
-        if( W8IO_RPC_API_CONCURENCY > 1 && $from + W8IO_MAX_UPDATE_BATCH < $height )
+        if( $from + W8IO_MAX_UPDATE_BATCH < $height )
         {
-            $this->cacheFill( $from, W8IO_MAX_UPDATE_BATCH );
             $cached = true;
+            if( W8IO_RPC_API_CONCURENCY > 1 )
+                $this->cacheFill( $from, W8IO_MAX_UPDATE_BATCH );
         }
 
         if( -1 === $from )

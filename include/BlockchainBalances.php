@@ -199,11 +199,25 @@ class BlockchainBalances
             case TX_BURNER:
             case TX_SMART_ACCOUNT:
             case TX_SUICIDE:
-                if( $asset === $afee )
-                    $procs_a = [ asset_out( $type ) => 1, $asset => gmp_neg( gmp_add( $amount, $fee ) ) ];
+                if( $amount === 0 )
+                {
+                    if( $fee === 0 )
+                        $procs_a = [ asset_out( $type ) => 1 ];
+                    else
+                        $procs_a = [ asset_out( $type ) => 1, $afee => gmp_neg( $fee ) ];
+                    $procs_b = [ asset_in( $type ) => 1 ];
+                }
                 else
-                    $procs_a = [ asset_out( $type ) => 1, $asset => gmp_neg( $amount ), $afee => gmp_neg( $fee ) ];
-                $procs_b = [ asset_in( $type ) => 1, $asset => $amount ];
+                {
+                    if( $fee === 0 )
+                        $procs_a = [ asset_out( $type ) => 1, $asset => gmp_neg( $amount ) ];
+                    else
+                    if( $asset === $afee )
+                        $procs_a = [ asset_out( $type ) => 1, $asset => gmp_neg( gmp_add( $amount, $fee ) ) ];
+                    else
+                        $procs_a = [ asset_out( $type ) => 1, $asset => gmp_neg( $amount ), $afee => gmp_neg( $fee ) ];
+                    $procs_b = [ asset_in( $type ) => 1, $asset => $amount ];
+                }
                 break;
 
             default:
@@ -227,34 +241,29 @@ class BlockchainBalances
         return $waves;
     }
 
-    public function update( $pts, $isRollback, $traces )
+    public function update( $pts, $isRollback, $debugTraces )
     {
         $changes = [];
         foreach( $pts as $ts )
             $this->processChanges( $ts, $changes );
         $this->commitChanges( $changes, $isRollback );
-        if( 10 )
+        if( isset( $debugTraces ) )
         {
-            foreach( $traces as $address => $balance )
+            foreach( $debugTraces as $address => $balance )
             {
                 [ $uid, $update ] = $this->getUid( $address, MAIN_ASSET );
                 $balanceLocal = $this->amounts->getValueByKey( $uid );
                 $diff = gmp_sub( $balanceLocal, $balance );
                 if( gmp_sign( $diff ) !== 0 )
                 {
-                    static $minerReward;
-                    if( !isset( $minerReward ) )
-                    {
-                        $minerReward = (string)jd( wkn()->fetch( '/addresses/data/' . W8IO_L1_CONTRACT . '/minerReward' ) )['value'];
-                        $minerReward .= '000000000';
-                    }
-                    $mod = gmp_mod( $diff, $minerReward );
-                    if( gmp_sign( $mod ) !== 0 )
-                    {
-                        require_once 'RO.php';
-                        wk()->log( ( new RO )->getAddressById( $address ) );
-                        wk()->log( $diff );
-                    }
+                    require_once 'RO.php';
+                    static $RO;
+                    if( !isset( $RO ) )
+                        $RO = new RO;
+                    $log = $RO->getAddressById( $address ) . ' diff = ' . w8io_amount( $diff, 18 );
+                    wk()->log( 'e', $log );
+                    w8_report( 'debugTraces', $log );
+                    continue;
                 }
             }
         }
