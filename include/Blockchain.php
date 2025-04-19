@@ -509,14 +509,6 @@ class Blockchain
                 if( $this->lastTarget > $height )
                     wk()->log( 'w', 'height = ' . $height );
                 $this->lastTarget = $height;
-
-                static $checkOnce = true;
-                if( $checkOnce && $height > W8IO_MAX_HISTORY_BATCH )
-                {
-                    if( false === $this->getBlockTrace( $height - W8IO_MAX_HISTORY_BATCH ) )
-                        w8_err( 'getBlockTrace past W8IO_MAX_HISTORY_BATCH' );
-                    $checkOnce = false;
-                }
             }
         }
 
