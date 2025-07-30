@@ -695,7 +695,7 @@ class Blockchain
                     $result = $this->getBlockTrace( $i );
                     if( $result === false )
                     {
-                        wk()->log( 'w', 'OFFLINE: cannot get block trace' );
+                        wk()->log( 'w', 'OFFLINE: cannot get block trace ' . $i );
                         return W8IO_STATUS_OFFLINE;
                     }
                     [ $block, $traces, $receipts, $diffs ] = $result;
