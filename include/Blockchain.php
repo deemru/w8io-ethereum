@@ -279,6 +279,16 @@ class Blockchain
         \React\EventLoop\Loop::get()->addTimer( $delay, $callback );
     }
 
+    public function setHead( $number )
+    {
+        $hexnumber = dechex( $number );
+        $json = wke()->fetch( '/', true, '{"jsonrpc":"2.0","method":"debug_setHead","params":["0x' . $hexnumber . '"],"id":0}', null, $this->jwtheaders() );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'];
+    }
+
     private function traceRequest( $number )
     {
         $hexnumber = dechex( $number );

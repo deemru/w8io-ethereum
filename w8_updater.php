@@ -293,6 +293,7 @@ function rollback( $block )
 
     $blockchain = new Blockchain( W8IO_MAIN_DB );
     $blockchain->rollback( $block + 1 );
+    $blockchain->setHead( $block );
 }
 
 function updater()
