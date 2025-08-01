@@ -466,6 +466,7 @@ class BlockchainParser
                     ], $fee, $burn );
                     break;
 
+                case 'CALLCODE':
                 case 'DELEGATECALL':
                 case 'STATICCALL':
                     if( $failed )
@@ -481,6 +482,17 @@ class BlockchainParser
                         $amount = 0;
                         $asset = NO_ASSET;
                         $group = $this->getGroupFunction( $to, $this->getMethod( $trace['input'] ), TX_INVOKE );
+                        if( $trace['type'] === 'CALLCODE' )
+                        {
+                            $amount = gmp_init( $trace['value'], 16 );
+                            if( gmp_sign( $amount ) === 0 )
+                            {
+                                $asset = NO_ASSET;
+                                $amount = 0;
+                            }
+                            else
+                                $asset = MAIN_ASSET;
+                        }
                     }
 
                     $this->appendTS( [
