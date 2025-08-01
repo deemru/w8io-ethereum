@@ -572,8 +572,13 @@ class Blockchain
                 $targetBlock = $this->getOtherBlockByNumber( $targetHeight );
                 if( $targetBlock === false )
                 {
-                    wk()->log( 'w', 'OFFLINE: getOtherBlockByNumber() bad response ' . $targetHeight );
-                    return W8IO_STATUS_OFFLINE;
+                    $targetHeight = $from + 1;
+                    $targetBlock = $this->getOtherBlockByNumber( $targetHeight );
+                    if( $targetBlock === false )
+                    {
+                        wk()->log( 'w', 'OFFLINE: getOtherBlockByNumber() bad response ' . $targetHeight );
+                        return W8IO_STATUS_OFFLINE;
+                    }
                 }
 
                 $finalized = $targetBlock['hash'];
