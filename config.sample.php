@@ -67,6 +67,18 @@ function wkr() : WavesKit
     return $wk;
 }
 
+// W8IO_OTHER_RPC_FALLBACK
+function wkrf() : WavesKit
+{
+    static $wk;
+    if( isset( $wk ) )
+        return $wk;
+    $wk = new WavesKit( 'E', [ 'w', 'e', 'i', 's' ] );
+    $wk->setNodeAddress( W8IO_OTHER_RPC_FALLBACK, 0 );
+    $wk->curlTimeout = W8IO_RPC_API_TIMEOUT;
+    return $wk;
+}
+
 function w8_err( $message = '(no message)' )
 {
     if( isset( $_SERVER['REQUEST_URI'] ) )
@@ -84,6 +96,7 @@ define( 'W8IO_LOCAL_ENGINE', 'http://127.0.0.1:8551' );
 define( 'W8IO_LOCAL_JWTSECRET', hex2bin( '0000000000000000000000000000000000000000000000000000000000000000' ) );
 define( 'W8IO_WAVES_NODE', 'https://nodes-testnet.wavesnodes.com' );
 define( 'W8IO_OTHER_RPC', 'https://unit0-testnet.w8.io' );
+define( 'W8IO_OTHER_RPC_FALLBACK', 'https://rpc-testnet.unit0.dev' );
 define( 'W8IO_L1_API', 'https://testnet.w8.io' );
 define( 'W8IO_L1_ROOT', 'https://testnet.w8.io/' );
 define( 'W8IO_L1_BALANCE_DIV', 1 );

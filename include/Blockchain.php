@@ -161,7 +161,14 @@ class Blockchain
     {
         $json = wkr()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",true],"id":1}' );
         if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
-            return false;
+        {
+            if( !defined( 'W8IO_OTHER_RPC_FALLBACK' ) )
+                return false;
+
+            $json = wkrf()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",true],"id":1}' );
+            if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+                return false;
+        }
 
         return $json['result'];
     }
@@ -170,7 +177,14 @@ class Blockchain
     {
         $json = wkr()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByHash","params":["' . $hash . '",true],"id":1}' );
         if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
-            return false;
+        {
+            if( !defined( 'W8IO_OTHER_RPC_FALLBACK' ) )
+                return false;
+
+            $json = wkrf()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByHash","params":["' . $hash . '",true],"id":1}' );
+            if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+                return false;
+        }
 
         return $json['result'];
     }
