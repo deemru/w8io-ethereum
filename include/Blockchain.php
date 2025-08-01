@@ -624,9 +624,11 @@ class Blockchain
         $cached = false;
         if( $from + W8IO_MAX_UPDATE_BATCH < $height )
         {
-            $cached = true;
             if( W8IO_RPC_API_CONCURENCY > 1 )
+            {
+                $cached = true;
                 $this->cacheFill( $from, W8IO_MAX_UPDATE_BATCH );
+            }
         }
 
         if( -1 === $from )
