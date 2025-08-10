@@ -695,7 +695,7 @@ class Blockchain
             if( $reference !== $block['parentHash'] )
             {
                 wk()->log( 'w', 'on-the-fly change @ ' . $i );
-                $this->setHead( $i - 1 );
+                $this->rollback( $i - 1 );
                 return W8IO_STATUS_UPDATED;
             }
 
