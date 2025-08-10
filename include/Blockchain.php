@@ -695,7 +695,8 @@ class Blockchain
             if( $reference !== $block['parentHash'] )
             {
                 wk()->log( 'w', 'on-the-fly change @ ' . $i );
-                return W8IO_STATUS_WARNING;
+                $this->setHead( $i - 1 );
+                return W8IO_STATUS_UPDATED;
             }
 
             $blockHash = $block['hash'];
