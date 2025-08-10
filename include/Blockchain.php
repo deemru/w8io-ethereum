@@ -683,7 +683,7 @@ class Blockchain
         {
             if( $blockHeight !== $i )
             {
-                $block = $this->getBlock( $i );
+                $block = $this->getBlock( $i, $cached );
                 if( $block === false )
                 {
                     wk()->log( 'w', 'OFFLINE: cannot get block' );
