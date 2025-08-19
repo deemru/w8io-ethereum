@@ -1150,7 +1150,7 @@ if( $address === 'MINERS' )
     $cache_miners_file = W8IO_DB_DIR . 'cache_miners.json';
     if( file_exists( $cache_miners_file ) && time() - filemtime( $cache_miners_file ) < 30 )
     {
-        [ $map_addresses, $map_balances, $map_aliases ] = jd( file_get_contents( $cache_miners_file ) );
+        [ $map_addresses, $map_balances, $map_aliases, $map_skipped ] = jd( file_get_contents( $cache_miners_file ) );
     }
     else
     {
@@ -1197,9 +1197,17 @@ if( $address === 'MINERS' )
                         $map_aliases[$address] = $alias;
                 }
             }
+            $l2_skipped = $L1_API->fetch( '/api/data/' . W8IO_L1_CONTRACT . '/miner_' . $address . '_SkippedEpochCount' );
+            if( $l2_skipped !== false )
+            {
+                $l2_skipped = jd( $l2_skipped );
+                $l2_skipped = reset( $l2_skipped );
+                if( $l2_skipped !== 'null' )
+                    $map_skipped[$address] = $l2_skipped;
+            }
         }
         
-        file_put_contents( $cache_miners_file, je( [ $map_addresses, $map_balances, $map_aliases ] ) );
+        file_put_contents( $cache_miners_file, je( [ $map_addresses, $map_balances, $map_aliases, $map_skipped ] ) );
     }
 
     $generators = $RO->getGeneratorsFees( $n, $arg );
@@ -1235,7 +1243,9 @@ if( $address === 'MINERS' )
             $infos[$address] = [ 'balance' => $balance, 'pts' => [] ];
         }
 
-        $infos[$address]['l1_address'] = $map_aliases[$l1_address] ?? $l1_address;
+        $infos[$address]['l1_address'] = $map_addresses[$address] ?? null;
+        $infos[$address]['l1_alias'] = $map_aliases[$l1_address] ?? null;
+        $infos[$address]['skipped'] = $map_skipped[$l1_address] ?? null;
     }
 
     $fromtime = $RO->getTimestampByHeight( $from );
@@ -1300,7 +1310,7 @@ if( $address === 'MINERS' )
     $n = 0;
     foreach( $generators as $address => $generator )
     {
-        $l1_address = $generator['l1_address'] ?? false;
+        $l1_address = $generator['l1_alias'] ?? $generator['l1_address'] ?? false;
         if( $l1_address !== false )
             $l1_address = '— <a href="' . W8IO_L1_ROOT . $l1_address . '">' . $l1_address . '</a>' . str_repeat( ' ', 35 - strlen( $l1_address ) );
         else
@@ -1351,7 +1361,9 @@ if( $address === 'MINERS' )
             continue;
         }
 
-        echo str_pad( ++$n, isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT ) . ") $address $l1_address $balance $percent  $mxprint $fee ($count)" . PHP_EOL;
+        $skipped = $generator['skipped'] ?? 0;
+        $skipped = $skipped > 0 ? ( ' <small><a href="' . W8IO_L1_ROOT . W8IO_L1_CONTRACT . '/data/miner_' . $generator['l1_address'] . '_SkippedEpochCount">-' . $skipped . '</a></small>' ) : '';
+        echo str_pad( ++$n, isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT ) . ") $address $l1_address $balance $percent  $mxprint $fee ($count)$skipped" . PHP_EOL;
     }
 
     $ntotal = str_pad( isset( $showtime ) ? $n : '', isset( $showtime ) ? 4 : 3, ' ', STR_PAD_LEFT );
