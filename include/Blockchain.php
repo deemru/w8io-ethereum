@@ -708,6 +708,7 @@ class Blockchain
                     if( $reference === $otherBlock['parentHash'] )
                     {
                         $this->rollback( $n );
+                        $this->setHead( $n - 1 );
                         break;
                     }
                     wk()->log( 'w', 'on-the-fly change @ ' . $n . ' (OTHER FORK)' );
