@@ -709,6 +709,7 @@ class Blockchain
                     {
                         $this->rollback( $n );
                         $this->setHead( $n - 1 );
+                        $this->followChain( $otherBlock, $otherBlock['hash'] );
                         break;
                     }
                     wk()->log( 'w', 'on-the-fly change @ ' . $n . ' (OTHER FORK)' );
