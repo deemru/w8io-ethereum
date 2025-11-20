@@ -694,7 +694,18 @@ class Blockchain
 
             if( $reference !== $block['parentHash'] )
             {
-                wk()->log( 'w', 'on-the-fly change @ ' . $i );
+                $otherBlock = $this->getOtherBlockByNumber( $i - 1 );
+                if( $otherBlock === false )
+                {
+                    wk()->log( 'w', 'on-the-fly change @ ' . $i . ' (OFFLINE)' );
+                    return W8IO_STATUS_OFFLINE;
+                }
+                if( $otherBlock['hash'] !== $block['parentHash'] )
+                {
+                    wk()->log( 'e', 'on-the-fly change @ ' . $i . ' (OTHER FORK)' );
+                    return W8IO_STATUS_OFFLINE;
+                }
+                $this->followChain( $otherBlock, $otherBlock['hash'] );
                 return W8IO_STATUS_OFFLINE;
             }
 
