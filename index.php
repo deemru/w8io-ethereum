@@ -1655,7 +1655,7 @@ else
 
             $out = '';
             $data = false;
-            for( $t = -16; $t <= 19; ++$t )
+            for( $t = TX_MINIMAL; $t <= TX_MAXIMAL; ++$t )
             {
                 $ti = asset_in( $t );
                 $ti = $balance[$ti] ?? 0;

@@ -440,6 +440,27 @@ class BlockchainParser
 
                     if( $deposit )
                     {
+                        if( !isset( $tx['mint'] ) )
+                            w8_err( 'unexpected transfer without mint (' . $tx['hash'] . ')' );
+
+                        $mintAmount = gmp_init( $tx['mint'], 16 );
+                        if( gmp_sign( $mintAmount ) !== 0 )
+                        {
+                            $this->appendTS( [
+                                UID =>      $this->getNewUid(),
+                                TXKEY =>    $txkey,
+                                TYPE =>     TX_MINT,
+                                A =>        MINTER,
+                                B =>        $this->getRecipientId( $tx['from'] ),
+                                ASSET =>    MAIN_ASSET,
+                                AMOUNT =>   $mintAmount,
+                                FEEASSET => NO_ASSET,
+                                FEE =>      0,
+                                ADDON =>    0,
+                                GROUP =>    NO_GROUP,
+                            ], 0, 0 );
+                        }
+
                         $type = TX_DEPOSIT;
                         $deposit = false;
                     }

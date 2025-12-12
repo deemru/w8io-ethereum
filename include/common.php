@@ -19,7 +19,7 @@ const MINER = -1;
 const BURNER = -2;
 const MYSELF = -3;
 const REWARDER = -4;
-const MASS = -5;
+const MINTER = -5;
 
 const TX_GENESIS = 1;
 const TX_DEPOSIT = 2;
@@ -39,6 +39,7 @@ const TX_SUICIDE = 15;
 const TX_INVOKE = 16;
 const TX_DELEGATE = 17;
 const TX_STATIC = 18;
+const TX_MINT = 19;
 
 const TX_MINER = 0;
 const TX_BURNER = -1;
@@ -53,6 +54,9 @@ const ITX_LEASE = -TX_LEASE;
 const ITX_LEASE_CANCEL = -TX_LEASE_CANCEL;
 const ITX_SPONSORSHIP = -TX_SPONSORSHIP;
 const ITX_INVOKE = -TX_INVOKE;
+
+const TX_MINIMAL = ITX_INVOKE;
+const TX_MAXIMAL = TX_MINT;
 
 const TYPE_STRINGS =
 [
@@ -78,6 +82,7 @@ const TYPE_STRINGS =
     TX_DELEGATE => 'delegate',
     TX_STATIC => 'static',
     TX_SUICIDE => 'suicide',
+    TX_MINT => 'mint',
 ];
 
 const MAIN_ASSET = 0;

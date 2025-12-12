@@ -236,7 +236,7 @@ class RO
             case 'BURNER': return BURNER;
             case 'SELF': return MYSELF;
             case 'REWARDER': return REWARDER;
-            case 'MASS': return MASS;
+            case 'MINTER': return MINTER;
             default:
                 if( strlen( $string ) === 42 )
                 {
@@ -385,7 +385,7 @@ class RO
             BURNER => 'BURNER',
             MYSELF => 'SELF',
             REWARDER => 'REWARDER',
-            MASS => 'MASS',
+            MINTER => 'MINTER',
         ];
 
         $cached = $cache[$id] ?? null;
