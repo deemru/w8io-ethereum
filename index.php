@@ -242,7 +242,7 @@ if( $address === 'MINERS' )
     //$showtime = true;
 
     if( $f === false )
-        $f = 12960;
+        $f = 40000;
 
     $f = intval( $f );
     $n = min( max( $f, isset( $showtime ) ? 1 : 80 ), 100000 );
