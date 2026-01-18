@@ -595,6 +595,25 @@ class Blockchain
                     }
                 }
 
+                static $lastTargetHeight = 0;
+                if( $lastTargetHeight === $targetHeight )
+                {
+                    $checkTargetHeight = $targetHeight + 1;
+                    wk()->log( 'w', 'no progress: checking parentHash at ' . $checkTargetHeight );
+                    $checkBlock = $this->getOtherBlockByNumber( $checkTargetHeight );
+                    if( $targetBlock['hash'] !== $checkBlock['parentHash'] )
+                    {
+                        wk()->log( 'w', 'no progress: parentHash differs' );
+                        $targetBlock = $this->getOtherBlockByHash( $checkBlock['parentHash'] );
+                    }
+                    if( $targetBlock === false )
+                    {
+                        wk()->log( 'w', 'OFFLINE: getOtherBlockByHash() bad response ' . $checkBlock['parentHash'] );
+                        return W8IO_STATUS_OFFLINE;
+                    }
+                }
+                $lastTargetHeight = $targetHeight;
+
                 $finalized = $targetBlock['hash'];
                 $this->followChain( $targetBlock, $finalized );
                 $this->syncingHeight = $targetHeight;
