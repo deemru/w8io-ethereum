@@ -584,7 +584,6 @@ class Blockchain
             {
                 if( W8IO_MAX_HISTORY_BATCH === 1 )
                 {
-                    $myBlock = $this->getBlock( $from );
                     $targetHeight = $from + 1;
                     $targetBlock = $this->getOtherBlockByNumber( $targetHeight );
                     if( $targetBlock === false )
@@ -592,17 +591,22 @@ class Blockchain
                         wk()->log( 'w', 'OFFLINE: getOtherBlockByNumber() bad response ' . $targetHeight );
                         return W8IO_STATUS_OFFLINE;
                     }
-                    if( $myBlock['hash'] !== $targetBlock['parentHash'] )
+                    $nextHeight = $targetHeight + 1;
+                    $nextBlock = $this->getOtherBlockByNumber( $nextHeight );
+                    if( $nextBlock === false )
                     {
-                        wk()->log( 'w', 'parentHash differs at ' . $targetHeight );
-                        $targetHeight = $from;
-                        $hashBlock = $this->getOtherBlockByHash( $targetBlock['parentHash'] );
-                        if( $hashBlock === false )
+                        wk()->log( 'w', 'OFFLINE: getOtherBlockByNumber() bad response ' . $nextHeight );
+                        return W8IO_STATUS_OFFLINE;
+                    }
+                    if( $targetBlock['hash'] !== $nextBlock['parentHash'] )
+                    {
+                        wk()->log( 'w', 'parentHash differs at ' . $nextHeight );
+                        $targetBlock = $this->getOtherBlockByHash( $nextBlock['parentHash'] );
+                        if( $targetBlock === false )
                         {
-                            wk()->log( 'w', 'OFFLINE: getOtherBlockByHash() bad response ' . $targetBlock['parentHash'] );
+                            wk()->log( 'w', 'OFFLINE: getOtherBlockByHash() bad response ' . $nextBlock['parentHash'] );
                             return W8IO_STATUS_OFFLINE;
                         }
-                        $this->followChain( $hashBlock, $targetBlock['parentHash'] );
                     }
                 }
                 else
