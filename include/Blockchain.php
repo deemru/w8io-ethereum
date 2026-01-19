@@ -582,10 +582,9 @@ class Blockchain
             else
             if( $this->syncingHeight - $from - W8IO_MAX_UPDATE_BATCH < 0 )
             {
-                $targetHeight = $from + W8IO_MAX_HISTORY_BATCH;
-                $targetBlock = $this->getOtherBlockByNumber( $targetHeight );
-                if( $targetBlock === false )
+                if( W8IO_MAX_HISTORY_BATCH === 1 )
                 {
+                    $myBlock = $this->getBlock( $from );
                     $targetHeight = $from + 1;
                     $targetBlock = $this->getOtherBlockByNumber( $targetHeight );
                     if( $targetBlock === false )
@@ -593,26 +592,34 @@ class Blockchain
                         wk()->log( 'w', 'OFFLINE: getOtherBlockByNumber() bad response ' . $targetHeight );
                         return W8IO_STATUS_OFFLINE;
                     }
-                }
-
-                static $lastTargetHeight = 0;
-                if( $lastTargetHeight === $targetHeight )
-                {
-                    $checkTargetHeight = $targetHeight + 1;
-                    wk()->log( 'w', 'no progress: checking parentHash at ' . $checkTargetHeight );
-                    $checkBlock = $this->getOtherBlockByNumber( $checkTargetHeight );
-                    if( $targetBlock['hash'] !== $checkBlock['parentHash'] )
+                    if( $myBlock['hash'] !== $targetBlock['parentHash'] )
                     {
-                        wk()->log( 'w', 'no progress: parentHash differs' );
-                        $targetBlock = $this->getOtherBlockByHash( $checkBlock['parentHash'] );
+                        wk()->log( 'w', 'parentHash differs at ' . $targetHeight );
+                        $targetHeight = $from;
+                        $hashBlock = $this->getOtherBlockByHash( $targetBlock['parentHash'] );
+                        if( $hashBlock === false )
+                        {
+                            wk()->log( 'w', 'OFFLINE: getOtherBlockByHash() bad response ' . $targetBlock['parentHash'] );
+                            return W8IO_STATUS_OFFLINE;
+                        }
+                        $this->followChain( $hashBlock, $targetBlock['parentHash'] );
                     }
+                }
+                else
+                {
+                    $targetHeight = $from + W8IO_MAX_HISTORY_BATCH;
+                    $targetBlock = $this->getOtherBlockByNumber( $targetHeight );
                     if( $targetBlock === false )
                     {
-                        wk()->log( 'w', 'OFFLINE: getOtherBlockByHash() bad response ' . $checkBlock['parentHash'] );
-                        return W8IO_STATUS_OFFLINE;
+                        $targetHeight = $from + 1;
+                        $targetBlock = $this->getOtherBlockByNumber( $targetHeight );
+                        if( $targetBlock === false )
+                        {
+                            wk()->log( 'w', 'OFFLINE: getOtherBlockByNumber() bad response ' . $targetHeight );
+                            return W8IO_STATUS_OFFLINE;
+                        }
                     }
                 }
-                $lastTargetHeight = $targetHeight;
 
                 $finalized = $targetBlock['hash'];
                 $this->followChain( $targetBlock, $finalized );
