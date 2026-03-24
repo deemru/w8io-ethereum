@@ -690,6 +690,7 @@ class Blockchain
                 if( $this->height >= $from )
                 {
                     $this->rollback( $from );
+                    sleep( W8IO_UPDATE_DELAY );
                     return W8IO_STATUS_UPDATED;
                 }
 
