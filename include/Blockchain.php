@@ -157,6 +157,15 @@ class Blockchain
         return $json['result'];
     }
 
+    public function getHashesByNumber( $number, $cached = true ) : array|false
+    {
+        $json = wk()->fetch( '/', true, '{"jsonrpc":"2.0","method":"debug_getBlockHashesByNumber","params":["0x' . dechex( $number ) . '"],"id":1}' );
+        if( $json === false || false === ( $json = jd( $json ) ) || !isset( $json['result'] ) )
+            return false;
+
+        return $json['result'];
+    }
+
     public function getOtherBlockByNumber( $number ) : array|false
     {
         $json = wkr()->fetch( '/', true, '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . dechex( $number ) . '",true],"id":1}' );
@@ -681,6 +690,30 @@ class Blockchain
 
             $reference = $this->getMyUniqueAt( $i - 1 );
 
+            if( $reference !== $block['parentHash'] )
+            {
+                $hashes = $this->getHashesByNumber( $i );
+                if( $hashes === false )
+                {
+                    wk()->log( 'w', 'OFFLINE: cannot get hashes by number' );
+                    return W8IO_STATUS_OFFLINE;
+                }
+                if( count( $hashes ) > 1 )
+                {
+                    foreach( $hashes as $hash )
+                    {
+                        $block = $this->getBlockByHash( $hash );
+                        if( $block === false )
+                        {
+                            wk()->log( 'w', 'OFFLINE: cannot get block by hash' );
+                            return W8IO_STATUS_OFFLINE;
+                        }
+                        if( $reference === $block['parentHash'] )
+                            break;
+                    }
+                }
+            }
+
             // STABLE BLOCK
             if( $reference === $block['parentHash'] )
             {
@@ -721,6 +754,30 @@ class Blockchain
                     return W8IO_STATUS_OFFLINE;
                 }
                 $blockHeight = $i;
+            }
+
+            if( $reference !== $block['parentHash'] )
+            {
+                $hashes = $this->getHashesByNumber( $i );
+                if( $hashes === false )
+                {
+                    wk()->log( 'w', 'OFFLINE: cannot get hashes by number' );
+                    return W8IO_STATUS_OFFLINE;
+                }
+                if( count( $hashes ) > 1 )
+                {
+                    foreach( $hashes as $hash )
+                    {
+                        $block = $this->getBlockByHash( $hash );
+                        if( $block === false )
+                        {
+                            wk()->log( 'w', 'OFFLINE: cannot get block by hash' );
+                            return W8IO_STATUS_OFFLINE;
+                        }
+                        if( $reference === $block['parentHash'] )
+                            break;
+                    }
+                }
             }
 
             if( $reference !== $block['parentHash'] )
