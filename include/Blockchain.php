@@ -20,6 +20,7 @@ class Blockchain
     private Triples $cacheDB;
     private KV $kvBlocks;
     private KV $kvTxs;
+    private KV $kvNum2Hash;
     private $lastUp;
     private $height;
     private $txheight;
@@ -42,6 +43,7 @@ class Blockchain
         $this->cacheDB = new Triples( W8IO_CACHE_DB );
         $this->kvBlocks = ( new KV( false ) )->setStorage( $this->cacheDB, 'blocks', true, 'INTEGER PRIMARY KEY', 'TEXT' )->setValueAdapter( function( $value ){ return jzd( $value ); }, function( $value ){ return jze( $value ); } );
         $this->kvTxs = ( new KV( false ) )->setStorage( $this->cacheDB, 'txs', true, 'TEXT UNIQUE', 'TEXT' )->setValueAdapter( function( $value ){ return jzd( $value ); }, function( $value ){ return jze( $value ); } );
+        $this->kvNum2Hash = new KV;
 
         $this->setHeight();
         $this->setTxHeight();
@@ -524,6 +526,41 @@ class Blockchain
         return $this->followBlock( $block, $transactions, $finalized );
     }
 
+    private function buildNum2Hash( $height )
+    {
+        $block = $this->getBlock( $height, false );
+        for( $n = 0;; )
+        {
+            $hash = $block['hash'];
+            if( $this->kvNum2Hash->getValueByKey( $height ) === $hash )
+                break;
+            $height = hexdec( $block['number'] );
+            $this->kvNum2Hash->setKeyValue( $height, $hash );
+
+            if( ++$n > 10000 )
+                break;
+
+            if( ( $n % 100 ) === 0 )
+                wk()->log( 'w', 'buildNum2Hash = ' . $n . ' / 10000' );
+
+            $hash = $block['parentHash'];
+            $block = $this->getBlockByHash( $hash );
+            if( $block === false )
+            {
+                wk()->log( 'w', 'OFFLINE: cannot get block( ' . $hash . ' )' );
+                return W8IO_STATUS_OFFLINE;
+            }
+        }
+    }
+
+    private function getBlockByNumber( $number )
+    {
+        $hash = $this->kvNum2Hash->getValueByKey( $number );
+        if( $hash === false )
+            return false;
+        return $this->getBlockByHash( $hash );
+    }
+
     public function update( $block = null )
     {
         $entrance = microtime( true );
@@ -542,6 +579,7 @@ class Blockchain
                 if( $this->lastTarget > $height )
                     wk()->log( 'w', 'height = ' . $height );
                 $this->lastTarget = $height;
+                $this->buildNum2Hash( $height );
             }
         }
 
@@ -680,7 +718,7 @@ class Blockchain
         else
         for( $i = $from + 1;; )
         {
-            $block = $this->getBlock( $i, $cached );
+            $block = $this->getBlockByNumber( $i );
             if( $block === false )
             {
                 wk()->log( 'w', 'OFFLINE: cannot get block' );
@@ -689,30 +727,6 @@ class Blockchain
             $blockHeight = $i;
 
             $reference = $this->getMyUniqueAt( $i - 1 );
-
-            if( $reference !== $block['parentHash'] )
-            {
-                $hashes = $this->getHashesByNumber( $i );
-                if( $hashes === false )
-                {
-                    wk()->log( 'w', 'OFFLINE: cannot get hashes by number' );
-                    return W8IO_STATUS_OFFLINE;
-                }
-                if( count( $hashes ) > 1 )
-                {
-                    foreach( $hashes as $hash )
-                    {
-                        $block = $this->getBlockByHash( $hash );
-                        if( $block === false )
-                        {
-                            wk()->log( 'w', 'OFFLINE: cannot get block by hash' );
-                            return W8IO_STATUS_OFFLINE;
-                        }
-                        if( $reference === $block['parentHash'] )
-                            break;
-                    }
-                }
-            }
 
             // STABLE BLOCK
             if( $reference === $block['parentHash'] )
@@ -747,7 +761,7 @@ class Blockchain
         {
             if( $blockHeight !== $i )
             {
-                $block = $this->getBlock( $i, $cached );
+                $block = $this->getBlockByNumber( $i );
                 if( $block === false )
                 {
                     wk()->log( 'w', 'OFFLINE: cannot get block' );
@@ -758,50 +772,7 @@ class Blockchain
 
             if( $reference !== $block['parentHash'] )
             {
-                $hashes = $this->getHashesByNumber( $i );
-                if( $hashes === false )
-                {
-                    wk()->log( 'w', 'OFFLINE: cannot get hashes by number' );
-                    return W8IO_STATUS_OFFLINE;
-                }
-                if( count( $hashes ) > 1 )
-                {
-                    foreach( $hashes as $hash )
-                    {
-                        $block = $this->getBlockByHash( $hash );
-                        if( $block === false )
-                        {
-                            wk()->log( 'w', 'OFFLINE: cannot get block by hash' );
-                            return W8IO_STATUS_OFFLINE;
-                        }
-                        if( $reference === $block['parentHash'] )
-                            break;
-                    }
-                }
-            }
-
-            if( $reference !== $block['parentHash'] )
-            {
                 wk()->log( 'w', 'on-the-fly change @ ' . $i );
-                for( $j = 0; $j < W8IO_MAX_HISTORY_BATCH; ++$j )
-                {
-                    $n = $i - $j;
-                    $otherBlock = $this->getOtherBlockByNumber( $n );
-                    if( $otherBlock === false )
-                    {
-                        wk()->log( 'w', 'on-the-fly change @ ' . $n . ' (OFFLINE)' );
-                        return W8IO_STATUS_OFFLINE;
-                    }
-                    $reference = $this->getMyUniqueAt( $n - 1 );
-                    if( $reference === $otherBlock['parentHash'] )
-                    {
-                        $this->rollback( $n );
-                        $this->setHead( $n - 1 );
-                        $this->followChain( $otherBlock, $otherBlock['hash'] );
-                        break;
-                    }
-                    wk()->log( 'w', 'on-the-fly change @ ' . $n . ' (OTHER FORK)' );
-                }
                 return W8IO_STATUS_OFFLINE;
             }
 
