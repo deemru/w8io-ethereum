@@ -534,7 +534,6 @@ class Blockchain
             $hash = $block['hash'];
             if( $this->kvNum2Hash->getValueByKey( $height ) === $hash )
                 break;
-            $height = hexdec( $block['number'] );
             $this->kvNum2Hash->setKeyValue( $height, $hash );
 
             if( ++$n > 10000 )
@@ -550,6 +549,7 @@ class Blockchain
                 wk()->log( 'w', 'OFFLINE: cannot get block( ' . $hash . ' )' );
                 return W8IO_STATUS_OFFLINE;
             }
+            $height = hexdec( $block['number'] );
         }
     }
 
