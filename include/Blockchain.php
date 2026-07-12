@@ -236,9 +236,9 @@ class Blockchain
         return $json['result'];
     }
 
-    public function getBlockTrace( $number )
+    public function getBlockTrace( $hash )
     {
-        $json = wk()->fetch( '/', true, $this->traceRequest( $number ) );
+        $json = wk()->fetch( '/', true, $this->traceRequest( $hash ) );
         if( $json === false || false === ( $json = jd( $json ) ) )
             return false;
 
@@ -314,15 +314,14 @@ class Blockchain
         return $json['result'];
     }
 
-    private function traceRequest( $number )
+    private function traceRequest( $hash )
     {
-        $hexnumber = dechex( $number );
         return
 '[
-    {"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x' . $hexnumber . '",true],"id":0},
-    {"jsonrpc":"2.0","method":"debug_traceBlockByNumber","params":["0x' . $hexnumber . '",{"tracer":"callTracer"}],"id":1},
-    {"jsonrpc":"2.0","method":"eth_getBlockReceipts","params":["0x' . $hexnumber . '"],"id":2},
-    {"jsonrpc":"2.0","method":"debug_traceBlockByNumber","params":["0x' . $hexnumber . '",{"tracer":"prestateTracer","tracerConfig":{"diffMode":true}}],"id":3}
+    {"jsonrpc":"2.0","method":"eth_getBlockByHash","params":["' . $hash . '",true],"id":0},
+    {"jsonrpc":"2.0","method":"debug_traceBlockByHash","params":["' . $hash . '",{"tracer":"callTracer"}],"id":1},
+    {"jsonrpc":"2.0","method":"eth_getBlockReceipts","params":["' . $hash . '"],"id":2},
+    {"jsonrpc":"2.0","method":"debug_traceBlockByHash","params":["' . $hash . '",{"tracer":"prestateTracer","tracerConfig":{"diffMode":true}}],"id":3}
 ]';
     }
 
@@ -376,7 +375,8 @@ class Blockchain
                 }
 
                 // TRACE
-                ( $this->cacheClient->post( wk()->getNodeAddress(), [], $this->traceRequest( $number ) ) )->then(
+                $blockHash = $block['hash'];
+                ( $this->cacheClient->post( wk()->getNodeAddress(), [], $this->traceRequest( $blockHash ) ) )->then(
                     function ( \Psr\Http\Message\ResponseInterface $response ) use ( $number )
                     {
                         $body = (string)$response->getBody();
@@ -801,7 +801,7 @@ class Blockchain
                 if( $n )
                 {
                     $key = w8h2k( $i );
-                    $result = $this->getBlockTrace( $i );
+                    $result = $this->getBlockTrace( $blockHash );
                     if( $result === false )
                     {
                         wk()->log( 'w', 'OFFLINE: cannot get block trace ' . $i );
